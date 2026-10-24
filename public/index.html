@@ -6,7 +6,8 @@
 <title>云影 · NAS 媒体中心</title>
 <meta name="theme-color" content="#16161a" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2300c1ff'/%3E%3Cpath d='M26 20l18 12-18 12z' fill='%23fff'/%3E%3C/svg%3E" />
-<link rel="stylesheet" href="/style.css?v=20261024v" />
+<link rel="stylesheet" href="/style.css?v=20261024-glass-mini" />
+<link rel="stylesheet" href="/glass.css?v=20261024-9" />
 <script>
   /* 桌面客户端（Electron）加载时带 ?desktop=1：让侧边栏避开 macOS 左上角的红绿灯 */
   if (location.search.indexOf('desktop=1') !== -1) {
@@ -187,12 +188,7 @@
           <h1 class="ap-title" id="apTitle">—</h1>
           <div class="ap-sub" id="apSub"></div>
           <div class="ap-chips" id="apChips"></div>
-          <div class="ap-acts">
-            <button class="ap-act" data-aact="lyric" id="apLyricBtn">歌词</button>
-            <button class="ap-act" data-aact="fav" id="apFav">收藏</button>
-            <button class="ap-act" data-aact="album" id="apGoAlbum">查看专辑</button>
-            <button class="ap-act" data-aact="artist" id="apGoArtist">同歌手</button>
-          </div>
+
         </div>
 
         <!-- 歌词：点封面或「歌词」切换，参考爆米花的字幕视图 -->
@@ -220,6 +216,28 @@
       </div>
 
       <div class="ap-bottom">
+    <aside class="ap-queue" id="apQueue" hidden>
+      <div class="apq-head">
+        <h3>播放队列</h3>
+        <span class="apq-meta" id="apqMeta"></span>
+        <button class="apq-close" data-aact="queue" title="收起">×</button>
+      </div>
+      <input class="queue-search" id="apqSearch" type="search" placeholder="搜索歌名、歌手、专辑" aria-label="搜索播放队列" autocomplete="off">
+      <div class="apq-list" id="apqList"></div>
+    </aside>
+          <div class="ap-tools">
+            <button class="audio-effect-trigger" data-effect-open aria-label="音效" aria-haspopup="dialog" aria-controls="audioEffectsPanel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5 3v6m0 4v8M12 3v10m0 4v4M19 3v3m0 4v11M2 9h6m1 8h6m1-11h6"/></svg><span>音效</span></button>
+            <button class="ap-act" data-aact="lyric" id="apLyricBtn" aria-label="歌词" title="歌词"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 4h16v13H9l-5 4V4Z"/><path d="M8 8h8M8 12h6"/></svg><span>歌词</span></button>
+            <button class="ap-act" data-aact="fav" id="apFav" aria-label="收藏" title="收藏"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/></svg><span>收藏</span></button>
+            <div class="mb-volume ap-volume">
+              <button class="ap-btn small" data-aact="audio-volume" id="apMute" title="音量" aria-label="音量" aria-expanded="false" aria-controls="apVolumePop">
+                <svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path id="apVolIcon" d="M3 9h4l5-4v14l-5-4H3zM16 8a6 6 0 010 8M19 5a10 10 0 010 14"/></svg><span>音量</span></button>
+              <div class="mb-volume-pop" id="apVolumePop" hidden><input id="apVol" type="range" min="0" max="100" value="100" aria-label="音量" orient="vertical" /><output id="apVolumeValue" for="apVol">100%</output></div>
+            </div>
+            <button class="ap-act ap-secondary" data-aact="album" id="apGoAlbum"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg><span>查看专辑</span></button>
+            <button class="ap-act ap-secondary" data-aact="artist" id="apGoArtist"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg><span>同歌手</span></button>
+          </div>
+        <canvas class="ap-spectrum" id="apSpectrum" role="img" aria-label="实时音频频谱：从左到右为低频到高频，柱高表示声音强度"></canvas>
         <div class="ap-progress" id="apBar" aria-label="播放进度">
           <div class="ap-track"></div>
           <div class="ap-buf" id="apBuf"></div>
@@ -253,13 +271,8 @@
           </div>
           <div class="ap-side right">
             <button class="ap-rate" data-aact="speed" id="apRate" title="播放速度">1.0×</button>
-            <div class="mb-volume ap-volume">
-              <button class="ap-btn small" data-aact="audio-volume" id="apMute" title="音量" aria-label="音量" aria-expanded="false" aria-controls="apVolumePop">
-                <svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path id="apVolIcon" d="M3 9h4l5-4v14l-5-4H3zM16 8a6 6 0 010 8M19 5a10 10 0 010 14"/></svg>
-              </button>
-              <div class="mb-volume-pop" id="apVolumePop" hidden><input id="apVol" type="range" min="0" max="100" value="100" aria-label="音量" orient="vertical" /><output id="apVolumeValue" for="apVol">100%</output></div>
-            </div>
-            <button class="ap-btn small" data-aact="queue" id="apQueueBtn" title="播放列表">
+
+            <button class="ap-btn small" data-aact="queue" id="apQueueBtn" title="播放队列" aria-label="播放队列" aria-expanded="false" aria-controls="apQueue">
               <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6.5h12M4 12h12M4 17.5h8M19 14.5v5.2"/><circle cx="17.4" cy="19.9" r="1.7" fill="currentColor" stroke="none"/></svg>
             </button>
           </div>
@@ -267,14 +280,7 @@
       </div>
     </div>
 
-    <aside class="ap-queue" id="apQueue" hidden>
-      <div class="apq-head">
-        <h3>播放列表</h3>
-        <span class="apq-meta" id="apqMeta"></span>
-        <button class="apq-close" data-aact="queue" title="收起">×</button>
-      </div>
-      <div class="apq-list" id="apqList"></div>
-    </aside>
+
   </div>
 
   <div class="mini-bar" id="miniBar" hidden>
@@ -293,17 +299,17 @@
         <svg viewBox="0 0 24 24" width="18" height="18"><path d="M6.2 5.8Q5 5 5 6.4V17.6Q5 19 6.2 18.2L14.4 12.8Q15.6 12 14.4 11.2Z" fill="currentColor"/><path d="M17.5 5v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </button>
     </div>
-    <div class="mb-track">
-      <div class="mb-track-head">
     <button class="mb-txt" data-aact="expand" title="展开播放页">
       <b id="mbTitle">—</b>
       <span id="mbSub"></span>
     </button>
-        <span class="mb-time"><span id="mbCur">00:00</span><span class="mb-time-total"> / <span id="mbDur">00:00</span></span></span>
-      </div>
+    <canvas class="mb-spectrum" id="mbSpectrum" role="img" aria-label="实时音频频谱：从左到右为低频到高频，柱高表示声音强度"></canvas>
+    <div class="mb-track mb-timing">
+      <span class="mb-time"><span id="mbCur">00:00</span><span class="mb-time-total"> / <span id="mbDur">00:00</span></span></span>
       <input class="mb-seek" id="mbSeek" type="range" min="0" max="1000" value="0" aria-label="播放进度" disabled />
     </div>
     <div class="mb-actions">
+      <button class="audio-effect-trigger" data-effect-open aria-label="音效" aria-haspopup="dialog" aria-controls="audioEffectsPanel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5 3v6m0 4v8M12 3v10m0 4v4M19 3v3m0 4v11M2 9h6m1 8h6m1-11h6"/></svg><span>音效</span></button>
       <button class="mb-btn" id="mbFav" data-aact="fav" title="收藏" aria-label="收藏" aria-pressed="false"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/></svg></button>
       <div class="mb-volume">
         <button class="mb-btn" id="mbVolumeBtn" data-aact="mini-volume" title="音量" aria-label="音量" aria-expanded="false" aria-controls="mbVolumePop"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path id="mbVolIcon" d="M3 9h4l5-4v14l-5-4H3zM16 8a6 6 0 010 8M19 5a10 10 0 010 14"/></svg></button>
@@ -312,12 +318,20 @@
       <button class="mb-btn" id="mbMode" data-aact="mode" title="播放模式：列表循环" aria-label="播放模式：列表循环"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path id="mbModeIcon" d="M19 9V7a2 2 0 00-2-2H5m0 0 3-3M5 5l3 3M5 15v2a2 2 0 002 2h12m0 0-3-3m3 3-3 3"/></svg></button>
       <button class="mb-btn" id="mbQueueBtn" data-aact="mini-queue" title="播放队列" aria-label="播放队列" aria-expanded="false"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 6h12M9 12h12M3 18h18"/><path d="m3 4 4 3-4 3z" fill="currentColor" stroke="none"/></svg></button>
     </div>
-    <section class="mb-queue" id="mbQueue" aria-label="播放队列" hidden><div class="mb-queue-head"><b>播放队列</b><span id="mbQueueCount">0 首</span><button class="mb-btn" data-aact="mini-queue" aria-label="收起队列">×</button></div><div id="mbQueueList"></div></section>
+    <section class="mb-queue" id="mbQueue" aria-label="播放队列" hidden><div class="mb-queue-head"><b>播放队列</b><span id="mbQueueCount">0 首</span><button class="mb-btn" data-aact="mini-queue" aria-label="收起队列">×</button></div><input class="queue-search" id="mbQueueSearch" type="search" placeholder="搜索歌名、歌手、专辑" aria-label="搜索迷你播放队列" autocomplete="off"><div id="mbQueueList"></div></section>
   </div>
 
   <div class="modal-layer" id="modalLayer" hidden></div>
   <div class="toast" id="toast"></div>
 
-  <script src="/app.js?v=20261024v"></script>
+  <dialog class="effects-panel" id="audioEffectsPanel" aria-labelledby="effectsTitle">
+    <header class="effects-header"><h2 id="effectsTitle">音效</h2><button class="effects-close" data-effect-close aria-label="关闭音效面板"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m6 6 12 12M18 6 6 18"/></svg></button></header>
+    <div class="effects-current"><span>正在使用</span><strong id="effectCurrentName">原声</strong><span class="effect-current-state">使用中</span></div>
+    <div class="effects-section"><h3>精选音效</h3><span>全部可用</span></div>
+    <div class="effects-cards"><article class="effect-card" data-effect-card="clear"><svg class="effect-card-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M17 18a8 8 0 0 1 0-12M13 15a4 4 0 0 1 0-6M31 6a8 8 0 0 1 0 12M35 3a12 12 0 0 1 0 18" transform="translate(0 9)"/><text x="24" y="29" text-anchor="middle" stroke="none" fill="currentColor" font-size="13">3D</text></svg><h3>3D丽音</h3><p>清亮人声 · 立体声场</p><button data-audio-effect="clear" aria-pressed="false">使用</button></article><article class="effect-card" data-effect-card="bass"><svg class="effect-card-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M8 24h4m4-8v16m8-24v32m8-24v16m4-8h4"/></svg><h3>超重低音</h3><p>低频增强 · 浑厚有力</p><button data-audio-effect="bass" aria-pressed="false">使用</button></article><article class="effect-card" data-effect-card="live"><svg class="effect-card-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M6 21v6m6-13v20m6-25v30m6-34v38m6-34v30m6-25v20m6-13v6"/></svg><h3>HiFi现场</h3><p>现场氛围 · 开阔空间</p><button data-audio-effect="live" aria-pressed="false">使用</button></article><article class="effect-card" data-effect-card="surround"><svg class="effect-card-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><ellipse cx="24" cy="24" rx="20" ry="10"/><ellipse cx="24" cy="24" rx="10" ry="20" transform="rotate(35 24 24)"/><circle cx="24" cy="24" r="4"/></svg><h3>3D环绕</h3><p>左右扩展 · 沉浸聆听</p><button data-audio-effect="surround" aria-pressed="false">使用</button></article><article class="effect-card" data-effect-card="off"><svg class="effect-card-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M18 34V12l18-4v22M18 15l18-4"/><ellipse cx="12" cy="34" rx="6" ry="4"/><ellipse cx="30" cy="30" rx="6" ry="4"/></svg><h3>原声</h3><p>保持原始音色</p><button data-audio-effect="off" aria-pressed="false">使用</button></article></div>
+    <p class="effects-note">空间音效使用立体声模拟，佩戴耳机体验更佳</p>
+  </dialog>
+  <script src="/app.js?v=20261024zl"></script>
+  <script src="/audio-effects.js?v=20261024zl"></script>
 </body>
 </html>

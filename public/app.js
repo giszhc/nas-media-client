@@ -102,8 +102,7 @@ const FULL_EXIT_D = 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5';
 /* -------------------------------- 主题切换 -------------------------------- */
 const THEME_KEY = 'yy_theme';
 function applyTheme(t, persist = true) {
-  if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
-  else document.documentElement.removeAttribute('data-theme');
+  document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
   try {
     if (persist) localStorage.setItem(THEME_KEY, t);
   } catch (e) {}
@@ -275,6 +274,33 @@ function renderTopbar() {
         <span>${connected ? esc(account || '已登录') : '登录'}</span>
       </button>
     </div>`;
+  syncTopbarSearch();
+}
+
+function isMusicSearchContext() {
+  return state.route.name === 'list' && state.route.type === 'music';
+}
+function syncTopbarSearch() {
+  const input = $('#searchInput');
+  if (!input) return;
+  const music = isMusicSearchContext();
+  input.placeholder = music ? '搜索当前音乐列表：歌曲、歌手、专辑' : '搜索影片：片名、演员、类型';
+  input.setAttribute('aria-label', music ? '搜索当前音乐列表' : '搜索影片');
+  input.value = music ? MUSIC.q : state.route.q || '';
+}
+function filterCurrentMusic(query) {
+  MUSIC.q = query;
+  if (MUSIC.tab !== 'song') { MUSIC.tab = 'song'; paintMusic(); }
+  else paintMusicBody();
+  const filters = $('.mp-filters');
+  if (filters) filters.outerHTML = musicFiltersHTML();
+  const top = $('#searchInput');
+  if (top && top.value !== query) top.value = query;
+}
+function submitTopbarSearch() {
+  const query = $('#searchInput')?.value || '';
+  if (isMusicSearchContext()) { filterCurrentMusic(query); return; }
+  go(`#/search?q=${encodeURIComponent(query.trim())}`);
 }
 
 /* -------------------------------- 路由 -------------------------------- */
@@ -330,9 +356,8 @@ function route() {
     renderSidebar();
     renderHome();
   }
-  $('#main').scrollTop = 0;
-  const input = $('#searchInput');
-  if (input) input.value = state.route.q || '';
+  $('#main').scrollTo({ top: 0, behavior: 'instant' });
+  syncTopbarSearch();
   if (view) view.dataset.rendered = '1';
   syncMiniBar();
 }
@@ -649,6 +674,7 @@ function renderSearch(q) {
   const items = !key
     ? []
     : allItems().filter((i) => {
+        if (i.type === 'music') return false;
         const hay = [i.title, i.rawTitle, i.artist, i.year, (i.genres || []).join(' '), i.label].join(' ').toLowerCase();
         return hay.includes(key);
       });
@@ -1817,7 +1843,8 @@ const MUSIC = {
   artist: 'all',
   album: 'all',
   q: '',
-  sort: 'name',
+  sort: 'artist',
+  direction: 'asc',
   probeTimer: 0
 };
 
@@ -1858,12 +1885,13 @@ function musicFiltered() {
   } else if (MUSIC.sort === 'album') {
     list.sort((a, b) => String(a.album).localeCompare(String(b.album), 'zh-Hans-CN') || byName(a, b));
   } else if (MUSIC.sort === 'recent') {
-    list.sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
+    list.sort((a, b) => (a.mtime || 0) - (b.mtime || 0));
   } else if (MUSIC.sort === 'duration') {
-    list.sort((a, b) => (b.duration || 0) - (a.duration || 0));
+    list.sort((a, b) => (a.duration || 0) - (b.duration || 0));
   } else {
     list.sort(byName);
   }
+  if (MUSIC.direction === 'desc') list.reverse();
   return list;
 }
 
@@ -1872,10 +1900,42 @@ function musicIsCurrent(song) {
   return !!(t && t.id === song.id && t.ep === song.ep);
 }
 
+const musicInitialCollator = new Intl.Collator('zh-Hans-CN-u-co-pinyin');
+const musicInitialBounds = [...'阿巴擦搭蛾发嘎哈击喀拉妈拿哦啪期然撒塌挖昔压匝'];
+const musicInitialLetters = [...'ABCDEFGHJKLMNOPQRSTWXYZ'];
+function musicInitial(value) {
+  const char = [...String(value || '').trim().normalize('NFKD').replace(/\p{M}/gu, '')][0] || '';
+  if (/^[a-z]$/i.test(char)) return char.toUpperCase();
+  if (!/\p{Script=Han}/u.test(char)) return '#';
+  for (let i = musicInitialBounds.length - 1; i >= 0; i--) {
+    if (musicInitialCollator.compare(char, musicInitialBounds[i]) >= 0) return musicInitialLetters[i];
+  }
+  return 'A';
+}
+function musicSongInitial(song) {
+  return musicInitial(MUSIC.sort === 'artist' ? song.artist : MUSIC.sort === 'album' ? song.album : song.title);
+}
+function musicAlphabetHTML(songs) {
+  const available = new Set(songs.map(musicSongInitial));
+  const field = MUSIC.sort === 'artist' ? '歌手' : MUSIC.sort === 'album' ? '专辑' : '歌名';
+  return `<nav class="music-alphabet" aria-label="按${field}首字母快速定位">${[...'#ABCDEFGHIJKLMNOPQRSTUVWXYZ'].map(letter => `<button data-act="music-letter" data-letter="${letter}" aria-label="定位${field} ${letter}"${available.has(letter) ? '' : ' disabled'}>${letter}</button>`).join('')}</nav>`;
+}
+function jumpMusicLetter(letter) {
+  const row = document.querySelector(`.mtbody .mtr[data-initial="${letter}"]`);
+  const main = $('#main');
+  if (!row || !main) return;
+  const inset = $('#topbar').getBoundingClientRect().height + 48;
+  main.scrollTo({ top: main.scrollTop + row.getBoundingClientRect().top - main.getBoundingClientRect().top - inset, behavior: 'instant' });
+  document.querySelectorAll('.music-alphabet button').forEach(button => {
+    if (button.dataset.letter === letter) button.setAttribute('aria-current', 'location');
+    else button.removeAttribute('aria-current');
+  });
+}
+
 function musicSongRow(song, i) {
   const on = musicIsCurrent(song);
   const ext = String(song.ext || '').replace('.', '').toUpperCase();
-  return `<button class="mtr${on ? ' on' : ''}" data-act="mplay" data-key="${esc(song.key)}">
+  return `<button class="mtr${on ? ' on' : ''}" data-act="mplay" data-key="${esc(song.key)}" data-initial="${musicSongInitial(song)}">
     <span class="c-no">${i + 1}</span>
     <span class="c-title"><b>${esc(song.title)}</b>${ext ? `<i class="fmt">${ext}</i>` : ''}</span>
     <span class="c-artist">${esc(song.artist || '未知歌手')}</span>
@@ -1925,7 +1985,7 @@ function musicBodyHTML() {
   if (!songs.length) {
     return `<div class="empty"><h3>没有匹配的歌曲</h3><p>换个歌手/专辑，或清空筛选条件。</p></div>`;
   }
-  return `<div class="mtable">
+  return `${musicAlphabetHTML(songs)}<div class="mtable">
     <div class="mtr head"><span class="c-no">#</span><span class="c-title">歌曲</span><span class="c-artist">歌手</span><span class="c-album">专辑</span><span class="c-dur">时长</span></div>
     <div class="mtbody">${songs.map((s, i) => musicSongRow(s, i)).join('')}</div>
   </div>`;
@@ -1961,10 +2021,12 @@ function musicFiltersHTML() {
         <option value="duration"${MUSIC.sort === 'duration' ? ' selected' : ''}>时长</option>
       </select>
     </label>
-    <div class="mp-search">
-      ${icon('search', 15)}
-      <input id="musicSearch" type="text" placeholder="搜索歌曲 / 歌手 / 专辑" value="${esc(MUSIC.q)}" />
-    </div>
+    <label class="mp-sel"><span>顺序</span>
+      <select data-act="mfilter" data-role="direction" aria-label="排序顺序">
+        <option value="asc"${MUSIC.direction === 'asc' ? ' selected' : ''}>升序</option>
+        <option value="desc"${MUSIC.direction === 'desc' ? ' selected' : ''}>降序</option>
+      </select>
+    </label>
     ${dirty ? `<button class="mp-reset" data-act="mreset">清空筛选</button>` : ''}
   </div>`;
 }
@@ -2007,6 +2069,7 @@ function paintMusic() {
   const scroller = $('#main');
   const top = scroller ? scroller.scrollTop : 0;
   view.innerHTML = musicPageHTML();
+  syncTopbarSearch();
   syncMusicPlayback();
   if (scroller) scroller.scrollTop = top;
 }
@@ -2040,11 +2103,14 @@ async function renderMusic() {
 
 function scrollToCurrentMusic() {
   const scroller = $('#main');
-  scroller.scrollTo({ top: 0, behavior: 'instant' });
+  if (!scroller) return;
   const currentRow = document.querySelector('.mtbody .mtr[aria-current="true"]');
-  if (currentRow) {
-    scroller.scrollTo({ top: Math.max(0, currentRow.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 16), behavior: 'instant' });
-  }
+  // 直接按当前滚动位置计算，避免先回顶部的平滑滚动与歌曲定位互相覆盖。
+  const top = currentRow
+    ? scroller.scrollTop + currentRow.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+      - (scroller.clientHeight - currentRow.getBoundingClientRect().height) / 2
+    : 0;
+  scroller.scrollTo({ top: Math.max(0, top), behavior: 'instant' });
 }
 
 /** 时长要 ffprobe 一首首算，后端后台补；这里轮询只更新时间列，不重排列表 */
@@ -2413,9 +2479,25 @@ function syncMiniVolume() {
   setIconD('apVolIcon', shape);
 }
 
+// 保留原始索引，筛选后的点击仍播放队列中的正确歌曲。
+function filteredQueue(query) {
+  const normalize = value => String(value || '').normalize('NFKC').toLocaleLowerCase().replace(/[\s\p{P}\p{S}]/gu, '');
+  const terms = String(query || '').trim().split(/\s+/u).map(normalize).filter(Boolean);
+  return AU.queue.map((track, index) => ({ track, index })).filter(({ track }) => {
+    const fields = [track.title, track.artist, track.album].map(normalize);
+    return terms.every(term => fields.some(field => {
+      let cursor = 0;
+      for (const char of field) if (char === term[cursor]) cursor++;
+      return cursor === term.length;
+    }));
+  });
+}
+
 function renderMiniQueue() {
-  $('#mbQueueCount').textContent = `${AU.queue.length} 首`;
-  $('#mbQueueList').innerHTML = AU.queue.length ? AU.queue.map((t, i) => `<button class="mb-queue-item${i === AU.index ? ' on' : ''}" data-aact="mini-track" data-i="${i}" aria-current="${i === AU.index}"><span>${i + 1}</span><b>${esc(t.title || '未知歌曲')}</b><small>${esc(t.artist || '未知歌手')}</small></button>`).join('') : '<p>选择歌曲后显示播放队列</p>';
+  const query = $('#mbQueueSearch').value;
+  const matches = filteredQueue(query);
+  $('#mbQueueCount').textContent = query.trim() ? `${matches.length} / ${AU.queue.length} 首` : `${AU.queue.length} 首`;
+  $('#mbQueueList').innerHTML = matches.length ? matches.map(({ track: t, index: i }) => `<button class="mb-queue-item${i === AU.index ? ' on' : ''}" data-aact="mini-track" data-i="${i}" aria-current="${i === AU.index}"><span>${i + 1}</span><b>${esc(t.title || '未知歌曲')}</b><small>${esc(t.artist || '未知歌手')}</small></button>`).join('') : `<p class="queue-empty" role="status">${AU.queue.length ? '没有匹配的歌曲，试试其他关键词' : '选择歌曲后显示播放队列'}</p>`;
 }
 
 function paintAudioPage(d, t) {
@@ -2795,13 +2877,28 @@ function syncAuMode() {
   $('#mbMode').setAttribute('aria-label', `播放模式：${next.label}`);
 }
 
+function positionAuQueue() {
+  const q = $('#apQueue');
+  if (!q || q.hidden) return;
+  const bounds = document.querySelector('.ap-bottom').getBoundingClientRect();
+  const page = $('#audioPage').getBoundingClientRect();
+  const edge = bounds.top - 12;
+  q.style.bottom = `${window.innerHeight - edge}px`;
+  q.style.right = `${Math.max(12, window.innerWidth - bounds.right)}px`;
+  q.style.width = `${Math.min(390, bounds.width)}px`;
+  q.style.height = `${Math.max(80, Math.min(440, edge - page.top - 12))}px`;
+}
+window.addEventListener('resize', positionAuQueue);
+
 function renderAuQueue() {
   const list = $('#apqList');
   if (!list) return;
   const meta = $('#apqMeta');
-  if (meta) meta.textContent = `${AU.queue.length} 首`;
-  list.innerHTML = AU.queue
-    .map((t, i) => {
+  const query = $('#apqSearch').value;
+  const matches = filteredQueue(query);
+  if (meta) meta.textContent = query.trim() ? `${matches.length} / ${AU.queue.length} 首` : `${AU.queue.length} 首`;
+  list.innerHTML = matches
+    .map(({ track: t, index: i }) => {
       const on = i === AU.index;
       return `<button class="apq-item${on ? ' on' : ''}" data-act="auplay" data-i="${i}" aria-current="${on}" title="${on ? '当前歌曲' : '播放'}：${esc(t.title || '未知歌曲')}">
         <span class="apq-no"><span class="apq-index">${on ? '<i class="meq"><b></b><b></b><b></b></i>' : i + 1}</span><span class="apq-play" aria-hidden="true">${icon('play', 14)}</span></span>
@@ -2810,7 +2907,8 @@ function renderAuQueue() {
       </button>`;
     })
     .join('');
-  const curEl = list.querySelector('.apq-item.on');
+  if (!matches.length) list.innerHTML = `<p class="queue-empty" role="status">${AU.queue.length ? '没有匹配的歌曲，试试其他关键词' : '选择歌曲后显示播放队列'}</p>`;
+  const curEl = !query.trim() && list.querySelector('.apq-item.on');
   if (curEl && list.scrollHeight > list.clientHeight + 1) {
     const lr = list.getBoundingClientRect();
     const cr = curEl.getBoundingClientRect();
@@ -3041,9 +3139,11 @@ function bindAudio() {
   }
 
   document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !$('#apQueue').hidden) { $('#apQueue').hidden = true; $('#apQueueBtn').setAttribute('aria-expanded', 'false'); $('#apQueueBtn').focus(); e.preventDefault(); e.stopImmediatePropagation(); return; }
     if (e.key === 'Escape') { if (!$('#mbVolumePop').hidden || !$('#apVolumePop').hidden) { const button = $('#apVolumePop').hidden ? $('#mbVolumeBtn') : $('#apMute'); closeMiniVolume(); button.focus(); e.preventDefault(); e.stopImmediatePropagation(); return; } $('#mbQueue').hidden = true; $('#mbQueueBtn').setAttribute('aria-expanded', 'false'); }
   });
   document.addEventListener('click', e => {
+    if (!e.target.closest('#apQueue, #apQueueBtn')) { $('#apQueue').hidden = true; $('#apQueueBtn').setAttribute('aria-expanded', 'false'); }
     if (!e.target.closest('.mb-volume')) closeMiniVolume();
     if (!e.target.closest('#mbQueue, #mbQueueBtn')) { $('#mbQueue').hidden = true; $('#mbQueueBtn').setAttribute('aria-expanded', 'false'); }
   });
@@ -3070,6 +3170,7 @@ function bindAudio() {
       q.hidden = !q.hidden;
       $('#mbQueueBtn').setAttribute('aria-expanded', String(!q.hidden));
       renderMiniQueue();
+      if (!q.hidden) $('#mbQueueSearch').focus();
       return;
     }
     if (act === 'mini-track') return loadAuTrack(Number(btn.dataset.i), { autoplay: true });
@@ -3110,7 +3211,8 @@ function bindAudio() {
     if (act === 'queue') {
       const q = $('#apQueue');
       q.hidden = !q.hidden;
-      if (!q.hidden) renderAuQueue();
+      $('#apQueueBtn').setAttribute('aria-expanded', String(!q.hidden));
+      if (!q.hidden) { positionAuQueue(); renderAuQueue(); $('#apqSearch').focus(); }
       return;
     }
     if (act === 'mute') {
@@ -3640,6 +3742,7 @@ async function onClick(e) {
     return;
   }
   /* ---- 音乐馆 ---- */
+  if (act === 'music-letter') { jumpMusicLetter(el.dataset.letter); return; }
   if (act === 'mplay') {
     e.stopPropagation();
     playMusicKey(el.dataset.key);
@@ -3777,8 +3880,7 @@ async function onClick(e) {
     return;
   }
   if (act === 'do-search') {
-    const q = ($('#searchInput') || {}).value || '';
-    go(`#/search?q=${encodeURIComponent(q.trim())}`);
+    submitTopbarSearch();
     return;
   }
   if (act === 'discover') {
@@ -3957,6 +4059,7 @@ async function onChange(e) {
     if (role === 'artist') MUSIC.artist = mf.value;
     else if (role === 'album') MUSIC.album = mf.value;
     else if (role === 'sort') MUSIC.sort = mf.value;
+    else if (role === 'direction') MUSIC.direction = mf.value;
     paintMusicBody();
     const reset = $('.mp-reset');
     const dirty = MUSIC.artist !== 'all' || MUSIC.album !== 'all' || MUSIC.q.trim();
@@ -4143,13 +4246,14 @@ async function boot() {
 document.addEventListener('click', onClick);
 document.addEventListener('change', onChange);
 document.addEventListener('input', (e) => {
-  if (!e.target || e.target.id !== 'musicSearch') return;
-  MUSIC.q = e.target.value;
-  paintMusicBody();
+  if (e.target?.id === 'apqSearch') { renderAuQueue(); return; }
+  if (e.target?.id === 'mbQueueSearch') { renderMiniQueue(); return; }
+  if (e.target?.id === 'searchInput' && isMusicSearchContext()) { filterCurrentMusic(e.target.value); return; }
+
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target && e.target.id === 'searchInput') {
-    go(`#/search?q=${encodeURIComponent(e.target.value.trim())}`);
+    submitTopbarSearch();
   }
   if (e.key === 'Enter' && e.target && e.target.id === 'rematchQuery') {
     doRematchSearch();

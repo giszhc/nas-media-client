@@ -2049,3 +2049,300 @@ body.has-mini #main { padding-bottom: 140px; }
   .channel-showcase .hero-actions { flex-wrap: wrap; gap: 8px; }
   .channel-showcase .hero-actions button { padding-inline: 14px; }
 }
+
+/* 音效入口与黑金音效面板。 */
+.audio-effect-trigger { display: inline-flex; flex: none; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 5px 10px; border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 11px; }
+.audio-effect-trigger svg { width: 24px; height: 24px; }
+.audio-effect-trigger:hover, .audio-effect-trigger[data-active="true"] { color: var(--brand); }
+.audio-effect-trigger:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; border-radius: 6px; }
+.effects-panel { --effect-gold: #f4c58f; width: min(860px, calc(100vw - 40px)); max-height: calc(100dvh - 48px); padding: 0 28px 22px; border: 1px solid #48413a; border-radius: 18px; background: #19191c; color: #faf8f5; box-shadow: 0 24px 80px rgba(0,0,0,.45); overflow: auto; color-scheme: dark; }
+.effects-panel::backdrop { background: rgba(0,0,0,.6); }
+.effects-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 0 0; }
+.effects-header h2 { margin: 0; font-size: 19px; font-weight: 600; }
+.effects-close { display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 50%; background: #ffffff0c; color: #c7c2bc; cursor: pointer; }
+.effects-close svg { width: 20px; height: 20px; }
+.effects-current { display: flex; min-height: 196px; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--effect-gold); background: radial-gradient(ellipse at center, #9d744522, transparent 70%); }
+.effects-current > span:first-child { color: #cba97f; font-size: 14px; }
+.effects-current strong { font-size: clamp(30px, 5vw, 44px); line-height: 1.3; font-weight: 650; }
+.effect-current-state { min-width: 144px; padding: 8px 24px; text-align: center; border: 1px solid #8a7154; border-radius: 7px; font-size: 14px; }
+.effects-section { display: flex; justify-content: space-between; align-items: baseline; margin: 6px 0 18px; }
+.effects-section h3 { margin: 0; font-size: 19px; }
+.effects-section > span { color: #bcb4ab; font-size: 12px; }
+.effects-cards { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 12px; scroll-snap-type: x proximity; scrollbar-color: #74604a #252427; scrollbar-width: thin; }
+.effect-card { flex: 0 0 174px; display: flex; flex-direction: column; align-items: center; min-height: 234px; padding: 24px 16px 18px; border: 1px solid transparent; border-radius: 12px; background: #262528; scroll-snap-align: start; }
+.effect-card[data-active="true"] { border-color: #b38c5f; background: #332c26; }
+.effect-card-icon { width: 52px; height: 52px; color: var(--effect-gold); margin: 4px 0 18px; }
+.effect-card h3 { margin: 0 0 9px; font-size: 21px; font-weight: 650; white-space: nowrap; }
+.effect-card p { margin: 0 0 25px; color: #bcb7b2; font-size: 12px; white-space: nowrap; }
+.effect-card button { margin-top: auto; width: 100%; min-height: 38px; border: 0; border-radius: 6px; color: var(--effect-gold); background: #ffffff12; font: inherit; font-size: 14px; cursor: pointer; }
+.effect-card button[aria-pressed="true"] { background: #e9bb87; color: #2b2118; font-weight: 600; }
+.effect-card button:hover { background: #ffffff24; }
+.effect-card button[aria-pressed="true"]:hover { background: #f4cfa5; }
+.effects-panel button:focus-visible { outline: 2px solid var(--effect-gold); outline-offset: 3px; }
+.effects-note { margin: 14px 0 0; color: #aaa49e; font-size: 12px; text-align: center; }
+@media (max-width: 600px) {
+  .effects-panel { width: calc(100vw - 24px); max-height: calc(100dvh - 24px); padding: 0 18px 20px; }
+  .effects-current { min-height: 180px; }
+  .effect-card { flex-basis: 154px; padding-inline: 12px; }
+  .mini-bar .audio-effect-trigger { padding-inline: 5px; }
+}
+
+/* 工具、进度、播放控制分三排。 */
+.page-audio .ap-shell { grid-template-rows: 42px minmax(100px, 1fr) auto 218px; }
+.page-audio .ap-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 22px; }
+.page-audio .ap-tools .ap-act, .page-audio .ap-tools .ap-btn { display: inline-grid; place-items: center; flex: none; width: 40px; height: 40px; padding: 8px; border: 0; background: transparent; border-radius: 6px; color: var(--ap-muted); }
+.page-audio .ap-tools svg { width: 25px; height: 25px; }
+.page-audio .ap-tools .ap-act.on { color: var(--ap-accent); background: transparent; }
+.page-audio .ap-tools #apFav.on svg { fill: currentColor; }
+.page-audio .ap-tools .ap-secondary { width: auto; padding: 8px 4px; font-size: 11px; }
+.page-audio .ap-tools .audio-effect-trigger { color: var(--ap-muted); padding: 2px 6px; }
+.page-audio .ap-tools .audio-effect-trigger[data-active="true"] { color: var(--ap-accent); }
+.page-audio .ap-tools .mb-volume { margin: 0; }
+.page-audio .ap-ctrls { display: grid; grid-template-columns: 1fr 3fr 1fr; gap: 0; margin-top: 22px; }
+.page-audio .ap-center { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; justify-items: center; align-items: center; }
+.page-audio .ap-ctrls .ap-side.right { justify-content: flex-end; }
+.page-audio .ap-play { width: 72px; height: 72px; }
+.page-audio .ap-play svg { width: 32px; height: 32px; }
+@media (max-width: 1080px) {
+  .page-audio .ap-shell { grid-template-rows: 38px minmax(100px, 1fr) auto 210px; }
+}
+@media (max-width: 720px) {
+  .page-audio .ap-shell { grid-template-rows: 36px minmax(140px, 1fr) auto 210px; }
+}
+
+/* 浅色音效面板保留暖金强调色，使用深色文字保证可读性。 */
+:root[data-theme="light"] .effects-panel {
+  --effect-gold: #84531d;
+  background: #faf9f7; color: #24211d; border-color: #ded8cf;
+  box-shadow: 0 24px 80px rgba(35, 30, 24, .2); color-scheme: light;
+}
+:root[data-theme="light"] .effects-panel::backdrop { background: rgba(31, 35, 40, .35); }
+:root[data-theme="light"] .effects-close { background: #ece9e4; color: #635c53; }
+:root[data-theme="light"] .effects-close:hover { background: #e2ddd5; }
+:root[data-theme="light"] .effects-current { background: radial-gradient(ellipse at center, #efdfc8, transparent 70%); }
+:root[data-theme="light"] .effects-current > span:first-child { color: #785b38; }
+:root[data-theme="light"] .effect-current-state { border-color: #b79b76; }
+:root[data-theme="light"] .effects-section > span,
+:root[data-theme="light"] .effect-card p,
+:root[data-theme="light"] .effects-note { color: #696158; }
+:root[data-theme="light"] .effects-cards { scrollbar-color: #b6a58f #eeeae4; }
+:root[data-theme="light"] .effect-card { background: #efede9; }
+:root[data-theme="light"] .effect-card[data-active="true"] { background: #f2e5d2; border-color: #ab7a3d; }
+:root[data-theme="light"] .effect-card button { background: #e2dcd3; }
+:root[data-theme="light"] .effect-card button:hover { background: #d8cdbc; }
+:root[data-theme="light"] .effect-card button[aria-pressed="true"] { background: #84531d; color: #fffaf4; }
+:root[data-theme="light"] .effect-card button[aria-pressed="true"]:hover { background: #6c4215; }
+
+/* 工具栏统一为图标在上、文字在下，六个入口均匀分布。 */
+.page-audio .ap-tools { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; align-items: center; }
+.page-audio .ap-tools .ap-act,
+.page-audio .ap-tools .ap-btn,
+.page-audio .ap-tools .audio-effect-trigger {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; width: 100%; height: 56px; min-width: 0; padding: 4px 0;
+  font: inherit; font-size: 11px; line-height: 16px;
+}
+.page-audio .ap-tools svg { flex: none; width: 25px; height: 25px; }
+.page-audio .ap-tools button span { white-space: nowrap; }
+.page-audio .ap-tools .mb-volume { width: 100%; }
+.page-audio .ap-tools button:hover { color: var(--ap-accent); }
+
+/* 首尾入口贴齐工具栏两端，中间入口等距排列。 */
+.page-audio .ap-tools { display: flex; justify-content: space-between; gap: 0; }
+.page-audio .ap-tools .ap-act,
+.page-audio .ap-tools .ap-btn,
+.page-audio .ap-tools .audio-effect-trigger,
+.page-audio .ap-tools .mb-volume { width: 44px; flex: 0 0 44px; }
+
+/* 收起歌词时移除右侧预留列，让播放器占满内容区。 */
+.page-audio .ap-shell:has(.ap-main:not(.lyric-on)) {
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: 0;
+}
+.page-audio .ap-shell:has(.ap-main:not(.lyric-on)) .ap-artwrap,
+.page-audio .ap-shell:has(.ap-main:not(.lyric-on)) .ap-info,
+.page-audio .ap-shell:has(.ap-main:not(.lyric-on)) .ap-bottom {
+  grid-column: 1 / -1;
+}
+.page-audio .ap-main:not(.lyric-on) > .ap-artwrap {
+  width: 100%; justify-self: center;
+}
+
+/* 无歌词视图：封面与歌曲信息左右排列，底部控制保持通栏。 */
+.page-audio .ap-shell:has(.ap-main:not(.lyric-on)) {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: 42px minmax(140px, 1fr) 218px;
+  column-gap: 5%;
+}
+.page-audio .ap-shell:has(.ap-main:not(.lyric-on)) .ap-artwrap { grid-column: 1; grid-row: 2; }
+.page-audio .ap-shell:has(.ap-main:not(.lyric-on)) .ap-info {
+  grid-column: 2; grid-row: 2; align-self: center; padding: 0;
+}
+.page-audio .ap-shell:has(.ap-main:not(.lyric-on)) .ap-bottom { grid-row: 3; }
+@media (max-width: 1080px) {
+  .page-audio .ap-shell:has(.ap-main:not(.lyric-on)) {
+    grid-template-rows: 38px minmax(140px, 1fr) 210px;
+  }
+}
+@media (max-width: 720px) {
+  .page-audio .ap-shell:has(.ap-main:not(.lyric-on)) {
+    grid-template-rows: 36px minmax(140px, 1fr) 210px;
+    column-gap: 16px;
+  }
+  .page-audio .ap-shell:has(.ap-main:not(.lyric-on)) .ap-info { text-align: left; }
+  .page-audio .ap-shell:has(.ap-main:not(.lyric-on)) .ap-chips { justify-content: flex-start; flex-wrap: wrap; }
+}
+
+/* 队列锚定控制区上方，保持进度与播放按钮可见。 */
+.page-audio .ap-bottom { position: relative; }
+.page-audio .ap-queue {
+  top: auto; right: 0; bottom: calc(100% + 12px);
+  width: min(390px, 100%); height: min(440px, calc(100dvh - 360px));
+  min-height: 120px; padding: 16px; border: 0; border-radius: 12px;
+  background: #202c3b; color: var(--ink); backdrop-filter: none;
+  box-shadow: 0 8px 30px #0003;
+}
+:root[data-theme="light"] .page-audio .ap-queue { background: #fff; }
+.page-audio .apq-head { flex: none; padding: 0 0 8px; border: 0; gap: 10px; }
+.page-audio .apq-head h3 { color: var(--ink); font-size: 14px; }
+.page-audio .apq-meta, .page-audio .apq-close { color: var(--ink-2); }
+.page-audio .apq-close { width: 30px; height: 30px; font-size: 24px; }
+.page-audio .apq-close:hover { background: var(--soft-2); color: var(--ink); }
+.page-audio .apq-list { min-height: 0; padding: 0; overscroll-behavior: contain; }
+.page-audio .apq-item { grid-template-columns: 22px minmax(0, 1fr) 80px; gap: 10px; padding: 12px 6px; height: 44px; color: var(--ink); }
+.page-audio .apq-name { color: inherit; font-size: 13px; font-weight: 500; }
+.page-audio .apq-art, .page-audio .apq-no { color: var(--ink-2); font-size: 12px; }
+.page-audio .apq-item:hover, .page-audio .apq-item:focus-visible { background: var(--soft-2); }
+.page-audio .apq-item.on { background: var(--soft); }
+.page-audio .apq-item.on .apq-name, .page-audio .apq-item.on .apq-no { color: var(--brand-deep); }
+@media (max-height: 520px) {
+  .page-audio .ap-queue { height: 140px; min-height: 0; }
+}
+
+.page-audio .ap-queue { position: fixed; min-height: 0; max-width: calc(100vw - 24px); }
+
+/* 实时频谱位于歌曲信息和时间之间，不覆盖进度操作。 */
+.mb-spectrum { display: block; flex: 1 1 260px; min-width: 60px; max-width: 480px; height: 28px; margin-inline: auto; color: #6dbfe3; pointer-events: none; }
+:root[data-theme="light"] .mb-spectrum { color: #1685ae; }
+.mb-track-head .mb-txt { flex: 0 1 auto; max-width: 40%; }
+@media (max-width: 1000px) {
+  .mb-spectrum { flex-basis: 120px; height: 24px; }
+  .mb-track-head { gap: 10px; }
+}
+@media (max-width: 700px) {
+  .mb-spectrum { display: none; }
+  .mb-track-head .mb-txt { max-width: 100%; }
+}
+
+/* 横向迷你播放台：歌曲信息 / 细柱频谱 / 独立时间进度。 */
+.mini-bar { gap: 20px; }
+.mini-bar > .mb-txt { flex: 0 1 180px; width: 180px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.mini-bar > .mb-txt b, .mini-bar > .mb-txt span { display: block; max-width: 100%; }
+.mini-bar > .mb-spectrum { flex: 1 1 260px; min-width: 60px; max-width: none; height: 46px; margin: 0 12px; color: #369ff4; }
+.mini-bar > .mb-timing { flex: 0 1 200px; width: 200px; gap: 14px; }
+.mb-timing .mb-time { margin-left: 0; align-self: flex-start; font-size: 13px; }
+.mb-timing .mb-seek { --progress: 0%; background: linear-gradient(to right, #369ff4 var(--progress), #58769566 var(--progress)); }
+.mb-timing .mb-seek::-webkit-slider-thumb { background: #bce4ff; border: 2px solid #369ff4; }
+.mb-timing .mb-seek::-moz-range-thumb { background: #bce4ff; border: 2px solid #369ff4; }
+.mini-bar .mb-btn.play { border: 1px solid #369ff4; }
+:root[data-theme="light"] .mini-bar > .mb-spectrum { color: #1685ae; }
+@media (max-width: 1200px) {
+  .mini-bar { gap: 10px; }
+  .mini-bar > .mb-txt { flex-basis: 120px; width: 120px; }
+  .mini-bar > .mb-timing { flex-basis: 130px; width: 130px; }
+  .mini-bar > .mb-spectrum { margin-inline: 0; }
+}
+@media (max-width: 900px) {
+  .mini-bar > .mb-spectrum { display: none; }
+  .mini-bar > .mb-txt { flex: 1 1 100px; }
+}
+@media (max-width: 760px) {
+  .mini-bar > .mb-timing { flex: 0 0 auto; width: auto; }
+  .mb-timing .mb-time { font-size: 11px; }
+  .mb-timing .mb-seek { position: absolute; }
+  .mini-bar > .mb-txt { gap: 3px; }
+}
+
+/* 白色磨砂播放面板：封面颜色透过柔光层，文字保持深色。 */
+:root[data-theme] .page-audio {
+  --ap-ink: #233444; --ap-muted: #526473; --ap-soft: rgba(50,76,98,.08);
+  --ap-line: rgba(50,76,98,.22); --ap-accent: #0076aa;
+  color: var(--ap-ink); background: #fff; color-scheme: light;
+}
+:root[data-theme] .page-audio .ap-bg { opacity: .24; filter: blur(72px) saturate(.7) brightness(1.15); }
+:root[data-theme] .page-audio::after { background: linear-gradient(145deg, rgba(255,255,255,.8), rgba(255,255,255,.54) 48%, rgba(255,255,255,.92)); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); }
+:root[data-theme] .page-audio .ap-art-ph { background: #e4ecf2; }
+:root[data-theme] .page-audio .ap-art-ph span { color: #526473; }
+:root[data-theme] .page-audio .ap-queue, :root .mb-queue {
+  --ink: #233444; --ink-2: #526473; --soft: rgba(0,118,170,.08);
+  --soft-2: rgba(50,76,98,.07); --brand: #0076aa; --brand-deep: #00648f;
+  color: var(--ink); background: rgba(255,255,255,.9); color-scheme: light;
+  backdrop-filter: blur(28px) saturate(1.2); -webkit-backdrop-filter: blur(28px) saturate(1.2);
+  box-shadow: 0 12px 40px rgba(28,50,70,.18), inset 0 1px 0 rgba(255,255,255,.95);
+}
+.queue-search {
+  flex: none; box-sizing: border-box; width: 100%; min-height: 36px; margin: 0 0 10px;
+  padding: 8px 12px; border: 1px solid #c4d0d9; border-radius: 8px;
+  background: rgba(255,255,255,.72); color: #233444; font: inherit; font-size: 13px; caret-color: #0076aa;
+}
+.queue-search::placeholder { color: #526473; }
+.queue-search:focus-visible { outline: 2px solid #0076aa; outline-offset: 2px; }
+.queue-search::selection { background: #c5e7f5; color: #233444; }
+.queue-empty { margin: 20px 4px; color: #526473; font-size: 13px; line-height: 1.6; text-align: center; }
+#mbQueueList { max-height: min(360px, 45dvh); overflow-y: auto; overscroll-behavior: contain; }
+:root[data-theme] .page-audio .apq-list, #mbQueueList { scrollbar-color: #a6b7c4 transparent; scrollbar-width: thin; }
+:root[data-theme] .page-audio .apq-list::-webkit-scrollbar-thumb { background: #a6b7c4; }
+.mb-queue-item:focus-visible { outline: 2px solid #0076aa; outline-offset: -2px; }
+
+/* 大播放器共用实时音频分析，在工具与进度之间展示频谱。 */
+.ap-spectrum { display: block; width: 100%; height: 60px; margin: 0 0 18px; pointer-events: none; }
+.page-audio .ap-tools { margin-bottom: 16px; }
+.page-audio .ap-shell { grid-template-rows: 42px minmax(100px, 1fr) auto 298px; }
+.page-audio .ap-shell:has(.ap-main:not(.lyric-on)) { grid-template-rows: 42px minmax(140px, 1fr) 298px; }
+@media (min-width: 1100px) {
+  .page-audio .ap-shell:has(.ap-main.lyric-on) { grid-template-columns: minmax(0, 1fr) minmax(0, .65fr) minmax(0, 1.8fr); grid-template-rows: 42px minmax(140px, 1fr) 298px; column-gap: 3%; }
+  .page-audio .ap-main.lyric-on > .ap-artwrap { grid-column: 1; grid-row: 2; }
+  .page-audio .ap-main.lyric-on > .ap-info { grid-column: 2; grid-row: 2; align-self: center; padding: 0; }
+  .page-audio .ap-shell:has(.ap-main.lyric-on) .ap-bottom { grid-column: 1 / 3; grid-row: 3; }
+  .page-audio .ap-shell:has(.ap-main.lyric-on) .ap-lyric { grid-column: 3; grid-row: 2 / 4; }
+}
+@media (max-width: 1080px) {
+  .page-audio .ap-shell { grid-template-rows: 38px minmax(100px, 1fr) auto 280px; }
+  .page-audio .ap-shell:has(.ap-main:not(.lyric-on)) { grid-template-rows: 38px minmax(140px, 1fr) 280px; }
+  .ap-spectrum { height: 50px; margin-bottom: 14px; }
+}
+@media (max-width: 720px) {
+  .page-audio .ap-shell { grid-template-rows: 36px minmax(140px, 1fr) auto 280px; }
+  .page-audio .ap-shell:has(.ap-main:not(.lyric-on)) { grid-template-rows: 36px minmax(140px, 1fr) 280px; }
+}
+
+/* 底部播放栏与展开播放器统一使用白色磨砂玻璃。 */
+:root .mini-bar,
+:root[data-theme="light"] .mini-bar,
+:root[data-theme="dark"] .mini-bar {
+  --ink: #233444; --ink-2: #526473; --soft-2: rgba(35,52,68,.07);
+  --brand: #0089bd; --brand-deep: #00648f;
+  color: var(--ink); color-scheme: light;
+  background: linear-gradient(115deg, rgba(255,255,255,.97), rgba(255,255,255,.82) 52%, rgba(255,255,255,.94));
+  backdrop-filter: blur(28px) saturate(1.15);
+  -webkit-backdrop-filter: blur(28px) saturate(1.15);
+  box-shadow: 0 8px 28px rgba(0,0,0,.12), inset 0 1px 0 #fff, inset 0 -1px 0 rgba(255,255,255,.7);
+}
+:root .mini-bar .mb-time, :root .mini-bar .mb-txt span { color: #526473; }
+
+/* 迷你播放条音效入口仅显示图标，完整播放页继续保留标签。 */
+.mini-bar .audio-effect-trigger {
+  width: 38px; height: 38px; padding: 0; gap: 0;
+  border-radius: 50%; transition: color .15s, background-color .15s;
+}
+.mini-bar .audio-effect-trigger > span { display: none; }
+.mini-bar .audio-effect-trigger:hover { color: var(--brand); background: var(--soft-2); }
+
+/* 歌曲信息按内容占宽，避免频谱左侧出现额外空白。 */
+.mini-bar > .mb-txt { flex: 0 1 auto; width: auto; max-width: 180px; }
+@media (max-width: 1200px) {
+  .mini-bar > .mb-txt { flex-basis: auto; width: auto; max-width: 120px; }
+}
+@media (max-width: 900px) {
+  .mini-bar > .mb-txt { flex: 1 1 100px; max-width: none; }
+}

@@ -18,6 +18,7 @@ const { displayTitle } = require('./lib/library-titles');
 const metadata = require('./lib/metadata');
 const media = require('./lib/media');
 const lyrics = require('./lib/lyrics');
+const { deduplicateSongs } = require('./lib/music-library');
 const net = require('./lib/net');
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -690,18 +691,19 @@ async function warmMusicDurations(jobs) {
 
 function handleMusic(req, res, url) {
   const items = allItems().filter((i) => i.type === 'music');
-  const songs = [];
+  const candidates = [];
   const needProbe = [];
 
   for (const item of items) {
     (item.episodes || []).forEach((ep, i) => {
       const epIndex = ep.index !== undefined ? ep.index : i;
       const song = musicSongEntry(item, ep, epIndex);
-      songs.push(song);
+      candidates.push(song);
       if (!song.duration) needProbe.push({ path: ep.path, mtime: ep.mtime });
     });
   }
 
+  const songs = deduplicateSongs(candidates);
   const artistMap = new Map();
   for (const s of songs) {
     const name = s.artist || '未知歌手';
