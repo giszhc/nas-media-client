@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>云影 · NAS 媒体中心</title>
+<meta name="theme-color" content="#16161a" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2300c1ff'/%3E%3Cpath d='M26 20l18 12-18 12z' fill='%23fff'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="/style.css?v=20261024v" />
+<script>
+  /* 桌面客户端（Electron）加载时带 ?desktop=1：让侧边栏避开 macOS 左上角的红绿灯 */
+  if (location.search.indexOf('desktop=1') !== -1) {
+    document.documentElement.classList.add('is-electron');
+  }
+</script>
+</head>
+<body>
+  <section id="libraryTaskProgress" class="library-task-progress" aria-label="媒体库处理进度" hidden></section>
+  <div class="app">
+    <aside class="sidebar" id="sidebar"></aside>
+    <main class="main" id="main">
+      <header class="topbar" id="topbar"></header>
+      <div class="view" id="view"></div>
+
+      <!-- 播放页：1:1 还原优酷网页版播放器（youku.com/ku/webtv） -->
+      <div class="page-player" id="player" hidden>
+        <div class="pp-crumb">
+          <button class="pp-back" id="closeBtn" data-pact="close" title="返回（Esc）">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <span class="pp-crumb-name" id="crumbName"></span>
+          <button class="pp-topbtn" id="playerNext" data-pact="next" title="下一集（N）">下一集</button>
+        </div>
+
+        <div class="pp-body">
+          <div class="pp-main">
+            <div class="pp-stage" id="ppStage">
+              <video id="video" playsinline preload="metadata"></video>
+
+              <div class="pp-loading" id="pLoading" hidden><div class="p-spinner"></div></div>
+              <div class="pp-flash" id="pFlash"></div>
+              <button class="pp-bigplay" id="pBigPlay" data-pact="toggle" hidden aria-label="播放">
+                <svg viewBox="0 0 64 64" width="48" height="48"><path d="M20 14l30 18-30 18z" fill="#fff"/></svg>
+              </button>
+              <div class="pp-badge" id="pnote" hidden></div>
+
+              <!-- 控制栏：优酷网页版样式（进度条贴底，按钮行在其上） -->
+              <div class="pp-controls" id="ppControls" aria-label="播放控制栏">
+                <div class="pp-cmask"></div>
+                <div class="pp-cbar">
+                  <div class="pp-cbar-l">
+                    <button class="pbtn icon" id="playToggle" data-pact="toggle" title="播放 / 暂停（空格）">
+                      <svg viewBox="0 0 24 24" width="28" height="28"><path id="pToggleIcon" d="M8 5l11 7-11 7z" fill="currentColor"/></svg>
+                    </button>
+                    <button class="pbtn icon" id="prevBtn" data-pact="prev" title="上一集">
+                      <svg viewBox="0 0 24 24" width="24" height="24"><path d="M17.8 5.8Q19 5 19 6.4V17.6Q19 19 17.8 18.2L9.6 12.8Q8.4 12 9.6 11.2Z" fill="currentColor"/><path d="M6.5 5v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                    </button>
+                    <button class="pbtn icon" id="nextBtn" data-pact="next" title="下一集（N）">
+                      <svg viewBox="0 0 24 24" width="24" height="24"><path d="M6.2 5.8Q5 5 5 6.4V17.6Q5 19 6.2 18.2L14.4 12.8Q15.6 12 14.4 11.2Z" fill="currentColor"/><path d="M17.5 5v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                    </button>
+                    <div class="pvol-wrap">
+                      <button class="pbtn icon" id="muteBtn" data-pact="mute" title="静音（M）">
+                        <svg viewBox="0 0 24 24" width="24" height="24" id="pVolIcon"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16.5 8.5a5 5 0 010 7M19 6a8.5 8.5 0 010 12" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/></svg>
+                      </button>
+                      <div class="pvol-rail"><input id="volRange" class="pvol" type="range" min="0" max="100" step="1" value="100" aria-label="音量" /></div>
+                    </div>
+                    <span class="ptime" id="ptime"><b>00:00</b> / 00:00</span>
+                  </div>
+                  <div class="pp-cbar-r">
+                    <button class="pbtn text next-ep" id="nextEpBtn" data-pact="next" title="下一集（N）">下一集</button>
+                    <div class="pmenu-wrap">
+                      <button class="pbtn text" id="speedBtn" data-pact="speed" title="倍速">倍速</button>
+                      <div class="pmenu" id="speedMenu" hidden></div>
+                    </div>
+                    <div class="pmenu-wrap">
+                      <button class="pbtn text" id="qualityBtn" data-pact="quality" title="清晰度">原画</button>
+                      <div class="pmenu" id="qualityMenu" hidden></div>
+                    </div>
+                    <div class="pmenu-wrap">
+                      <button class="pbtn icon" id="settingsBtn" data-pact="settings" title="设置">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="6.6"/><circle cx="12" cy="12" r="2.8"/><path d="M12 1.9v2.6M12 19.5v2.6M1.9 12h2.6M19.5 12h2.6M4.8 4.8l1.9 1.9M17.3 17.3l1.9 1.9M19.2 4.8l-1.9 1.9M6.7 17.3l-1.9 1.9"/></svg>
+                      </button>
+                      <div class="pmenu" id="settingsMenu" hidden></div>
+                    </div>
+                    <button class="pbtn icon" id="pipBtn" data-pact="pip" title="画中画（P）">
+                      <svg viewBox="0 0 24 24" width="24" height="24"><rect x="2.5" y="5" width="19" height="14" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><rect x="12.5" y="10.5" width="6.5" height="5" rx="0.8" fill="currentColor"/></svg>
+                    </button>
+                    <button class="pbtn icon" id="theaterBtn" data-pact="theater" title="网页全屏">
+                      <svg viewBox="0 0 24 24" width="24" height="24" id="pTheaterIcon"><rect x="2.5" y="5" width="19" height="14" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M7 12h10M7 12l2.4-2.4M7 12l2.4 2.4M17 12l-2.4-2.4M17 12l-2.4 2.4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </button>
+                    <button class="pbtn icon" id="fullBtn" data-pact="full" title="全屏（F）">
+                      <svg viewBox="0 0 24 24" width="24" height="24"><path id="pFullIcon" d="M4 9.5V4h5.5M20 9.5V4h-5.5M4 14.5V20h5.5M20 14.5V20h-5.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="pbar" id="pbar" aria-label="播放进度">
+                  <div class="pbar-track"></div>
+                  <div class="pbar-buffer" id="pbarBuffer"></div>
+                  <div class="pbar-fill" id="pbarFill"></div>
+                  <div class="pbar-dot" id="pbarDot"></div>
+                  <div class="pbar-tip" id="pbarTip" hidden></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 视频下方：优酷式「为你推荐」横滑条 -->
+            <section class="pp-reco" id="ppReco">
+              <div class="pp-reco-head">
+                <h3>为你推荐</h3>
+              </div>
+              <div class="pp-reco-row" id="ppRecoRow"></div>
+            </section>
+          </div>
+
+          <aside class="pp-side">
+            <div class="pp-tabpane" id="ppPaneVideo">
+              <div class="pp-vhead">
+                <h1 class="pp-vtitle" id="playerTitle"></h1>
+                <div class="pp-vsub" id="playerSub"></div>
+                <div class="pp-tags" id="ppTags"></div>
+              </div>
+
+              <div class="pp-syn" id="ppSynopsis"></div>
+              <button class="pp-syn-more" id="ppSynMore" data-pact="moresyn" hidden>展开</button>
+
+              <div class="pp-acts">
+                <button class="pp-act" data-pact="fav" title="收藏">
+                  <svg viewBox="0 0 24 24" width="19" height="19"><path d="M12 4.5l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 10.2l5.4-.8z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+                </button>
+                <button class="pp-act" data-pact="download" title="下载">
+                  <svg viewBox="0 0 24 24" width="19" height="19"><path d="M12 4v10m0 0l-4-4m4 4l4-4M5 18h14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+                <button class="pp-act" data-pact="share" title="分享">
+                  <svg viewBox="0 0 24 24" width="19" height="19"><path d="M8.5 13.5l7-3.6M8.5 10.5l7 3.6" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/><circle cx="6" cy="12" r="2.4" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="18" cy="7" r="2.4" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="18" cy="17" r="2.4" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>
+                </button>
+                <button class="pp-act" data-pact="report" title="反馈">
+                  <svg viewBox="0 0 24 24" width="19" height="19"><circle cx="12" cy="12" r="8.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 8v5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><circle cx="12" cy="16.2" r="1.05" fill="currentColor"/></svg>
+                </button>
+              </div>
+
+              <section class="pp-sec" id="ppEpSection">
+                <div class="pp-sec-head">
+                  <h3>选集</h3>
+                  <span class="pp-sec-meta" id="sideMeta"></span>
+                </div>
+                <div class="pep-grid" id="pepGrid"></div>
+                <button class="pp-more" id="ppMoreBtn" data-pact="moreeps">查看全部</button>
+              </section>
+
+              <section class="pp-sec" id="ppInfoSection">
+                <div class="pp-sec-head">
+                  <h3>简介</h3>
+                  <span class="pp-side-rating" id="sideRating"></span>
+                </div>
+                <div class="pp-meta-list" id="ppMetaList"></div>
+              </section>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- 音频播放器：独立的 audio 元素 + 独立控件，不复用视频播放页的任何逻辑 -->
+  <audio id="audioEl" preload="metadata"></audio>
+
+  <div class="page-audio" id="audioPage" hidden>
+    <div class="ap-bg" id="apBg"></div>
+    <div class="ap-shell">
+      <div class="ap-top">
+        <button class="ap-back" data-aact="close" title="返回（Esc）">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M5 9l7 6 7-6" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <span class="ap-crumb" id="apCrumb">正在播放</span>
+        <button class="ap-tobtn" data-aact="info" id="apInfoBtn">歌曲详情</button>
+      </div>
+
+      <div class="ap-main">
+        <div class="ap-artwrap">
+          <div class="ap-art" id="apArt" data-aact="lyric" title="点击显示歌词">
+            <img id="apCover" alt="" />
+            <div class="ap-art-ph" id="apArtPh" aria-hidden="true"><span>♪</span></div>
+          </div>
+        </div>
+        <div class="ap-info">
+          <div class="ap-kicker"><span class="ap-eq" id="apEq"><b></b><b></b><b></b><b></b></span>正在播放</div>
+          <h1 class="ap-title" id="apTitle">—</h1>
+          <div class="ap-sub" id="apSub"></div>
+          <div class="ap-chips" id="apChips"></div>
+          <div class="ap-acts">
+            <button class="ap-act" data-aact="lyric" id="apLyricBtn">歌词</button>
+            <button class="ap-act" data-aact="fav" id="apFav">收藏</button>
+            <button class="ap-act" data-aact="album" id="apGoAlbum">查看专辑</button>
+            <button class="ap-act" data-aact="artist" id="apGoArtist">同歌手</button>
+          </div>
+        </div>
+
+        <!-- 歌词：点封面或「歌词」切换，参考爆米花的字幕视图 -->
+        <div class="ap-lyric" id="apLyric" hidden>
+          <div class="ap-lyric-heading"><h2 id="apLyricTitle">—</h2><p id="apLyricArtist"></p></div>
+          <div class="lyr-scroll" id="lyrScroll">
+            <div class="lyr-pad"></div>
+            <div class="lyr-body" id="lyrBody"></div>
+            <div class="lyr-pad"></div>
+          </div>
+          <div class="lyr-empty" id="lyrEmpty" hidden>
+            <div class="lyr-empty-ico">♪</div>
+            <p id="lyrEmptyTxt">暂无歌词</p>
+          </div>
+          <div class="lyr-search" id="lyrSearchRow" hidden>
+            <input id="lyrQuery" type="search" placeholder="搜索歌词：歌名 歌手" autocomplete="off" />
+            <button data-aact="lyrsearch">搜索</button>
+          </div>
+          <div class="lyr-foot">
+            <span class="lyr-src" id="lyrSrc"></span>
+            <button class="lyr-mini" data-aact="lyrsearch2" title="手动搜索歌词">搜歌词</button>
+            <button class="lyr-mini" data-aact="lyrrefresh" title="重新联网匹配">重新匹配</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ap-bottom">
+        <div class="ap-progress" id="apBar" aria-label="播放进度">
+          <div class="ap-track"></div>
+          <div class="ap-buf" id="apBuf"></div>
+          <div class="ap-fill" id="apFill"></div>
+          <div class="ap-dot" id="apDot"></div>
+        </div>
+        <div class="ap-times"><span id="apCur">00:00</span><span id="apDur">00:00</span></div>
+        <div class="ap-ctrls">
+          <div class="ap-side">
+            <button class="ap-btn small" data-aact="mode" id="apModeBtn" title="播放模式">
+              <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path id="apModeIcon" d="M19 9V7a2 2 0 00-2-2H5m0 0 3-3M5 5l3 3M5 15v2a2 2 0 002 2h12m0 0-3-3m3 3-3 3"/></svg>
+            </button>
+            <span class="ap-mode-txt" id="apModeTxt">列表循环</span>
+          </div>
+          <div class="ap-center">
+            <button class="ap-btn" data-aact="prev" title="上一首（P）">
+              <svg viewBox="0 0 24 24" width="24" height="24"><path d="M17.8 5.8Q19 5 19 6.4V17.6Q19 19 17.8 18.2L9.6 12.8Q8.4 12 9.6 11.2Z" fill="currentColor"/><path d="M6.5 5v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
+            <button class="ap-btn back10" data-aact="back10" title="快退 10 秒（←）">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 8V4.5L6.5 7.5 11 10.5V8a6 6 0 11-6 6"/><text x="12.4" y="16.6" font-size="7.4" font-weight="700" fill="currentColor" stroke="none" text-anchor="middle">10</text></svg>
+            </button>
+            <button class="ap-play" data-aact="toggle" id="apPlayBtn" title="播放 / 暂停（空格）">
+              <svg viewBox="0 0 24 24" width="26" height="26"><path id="apPlayIcon" d="M8 5l11 7-11 7z" fill="currentColor"/></svg>
+            </button>
+            <button class="ap-btn fwd10" data-aact="fwd10" title="快进 10 秒（→）">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 8V4.5l4.5 3-4.5 3V8a6 6 0 106 6"/><text x="11.6" y="16.6" font-size="7.4" font-weight="700" fill="currentColor" stroke="none" text-anchor="middle">10</text></svg>
+            </button>
+            <button class="ap-btn" data-aact="next" title="下一首（N）">
+              <svg viewBox="0 0 24 24" width="24" height="24"><path d="M6.2 5.8Q5 5 5 6.4V17.6Q5 19 6.2 18.2L14.4 12.8Q15.6 12 14.4 11.2Z" fill="currentColor"/><path d="M17.5 5v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+          <div class="ap-side right">
+            <button class="ap-rate" data-aact="speed" id="apRate" title="播放速度">1.0×</button>
+            <div class="mb-volume ap-volume">
+              <button class="ap-btn small" data-aact="audio-volume" id="apMute" title="音量" aria-label="音量" aria-expanded="false" aria-controls="apVolumePop">
+                <svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path id="apVolIcon" d="M3 9h4l5-4v14l-5-4H3zM16 8a6 6 0 010 8M19 5a10 10 0 010 14"/></svg>
+              </button>
+              <div class="mb-volume-pop" id="apVolumePop" hidden><input id="apVol" type="range" min="0" max="100" value="100" aria-label="音量" orient="vertical" /><output id="apVolumeValue" for="apVol">100%</output></div>
+            </div>
+            <button class="ap-btn small" data-aact="queue" id="apQueueBtn" title="播放列表">
+              <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6.5h12M4 12h12M4 17.5h8M19 14.5v5.2"/><circle cx="17.4" cy="19.9" r="1.7" fill="currentColor" stroke="none"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="ap-queue" id="apQueue" hidden>
+      <div class="apq-head">
+        <h3>播放列表</h3>
+        <span class="apq-meta" id="apqMeta"></span>
+        <button class="apq-close" data-aact="queue" title="收起">×</button>
+      </div>
+      <div class="apq-list" id="apqList"></div>
+    </aside>
+  </div>
+
+  <div class="mini-bar" id="miniBar" hidden>
+    <button class="mb-art" data-aact="expand" title="展开播放页">
+      <img id="mbCover" alt="" hidden />
+      <span class="mb-art-ph" id="mbArtPh"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 17V5l11-2v12M9 8l11-2"/><ellipse cx="6" cy="18" rx="3" ry="2"/><ellipse cx="17" cy="16" rx="3" ry="2"/></svg></span>
+    </button>
+    <div class="mb-btns">
+      <button class="mb-btn" data-aact="prev" title="上一首">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M17.8 5.8Q19 5 19 6.4V17.6Q19 19 17.8 18.2L9.6 12.8Q8.4 12 9.6 11.2Z" fill="currentColor"/><path d="M6.5 5v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      <button class="mb-btn play" data-aact="toggle" id="mbPlay" title="播放 / 暂停">
+        <svg viewBox="0 0 24 24" width="20" height="20"><path id="mbPlayIcon" d="M8 5l11 7-11 7z" fill="currentColor"/></svg>
+      </button>
+      <button class="mb-btn" data-aact="next" title="下一首">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M6.2 5.8Q5 5 5 6.4V17.6Q5 19 6.2 18.2L14.4 12.8Q15.6 12 14.4 11.2Z" fill="currentColor"/><path d="M17.5 5v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="mb-track">
+      <div class="mb-track-head">
+    <button class="mb-txt" data-aact="expand" title="展开播放页">
+      <b id="mbTitle">—</b>
+      <span id="mbSub"></span>
+    </button>
+        <span class="mb-time"><span id="mbCur">00:00</span><span class="mb-time-total"> / <span id="mbDur">00:00</span></span></span>
+      </div>
+      <input class="mb-seek" id="mbSeek" type="range" min="0" max="1000" value="0" aria-label="播放进度" disabled />
+    </div>
+    <div class="mb-actions">
+      <button class="mb-btn" id="mbFav" data-aact="fav" title="收藏" aria-label="收藏" aria-pressed="false"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/></svg></button>
+      <div class="mb-volume">
+        <button class="mb-btn" id="mbVolumeBtn" data-aact="mini-volume" title="音量" aria-label="音量" aria-expanded="false" aria-controls="mbVolumePop"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path id="mbVolIcon" d="M3 9h4l5-4v14l-5-4H3zM16 8a6 6 0 010 8M19 5a10 10 0 010 14"/></svg></button>
+        <div class="mb-volume-pop" id="mbVolumePop" hidden><input id="mbVol" type="range" min="0" max="100" value="100" aria-label="音量" orient="vertical" /><output id="mbVolumeValue" for="mbVol">100%</output></div>
+      </div>
+      <button class="mb-btn" id="mbMode" data-aact="mode" title="播放模式：列表循环" aria-label="播放模式：列表循环"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path id="mbModeIcon" d="M19 9V7a2 2 0 00-2-2H5m0 0 3-3M5 5l3 3M5 15v2a2 2 0 002 2h12m0 0-3-3m3 3-3 3"/></svg></button>
+      <button class="mb-btn" id="mbQueueBtn" data-aact="mini-queue" title="播放队列" aria-label="播放队列" aria-expanded="false"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 6h12M9 12h12M3 18h18"/><path d="m3 4 4 3-4 3z" fill="currentColor" stroke="none"/></svg></button>
+    </div>
+    <section class="mb-queue" id="mbQueue" aria-label="播放队列" hidden><div class="mb-queue-head"><b>播放队列</b><span id="mbQueueCount">0 首</span><button class="mb-btn" data-aact="mini-queue" aria-label="收起队列">×</button></div><div id="mbQueueList"></div></section>
+  </div>
+
+  <div class="modal-layer" id="modalLayer" hidden></div>
+  <div class="toast" id="toast"></div>
+
+  <script src="/app.js?v=20261024v"></script>
+</body>
+</html>

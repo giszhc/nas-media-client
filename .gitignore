@@ -1,0 +1,23 @@
+# 本地配置、媒体索引、登录会话和缓存
+/data/
+.env
+.env.*
+!.env.example
+*.log
+
+# 依赖及构建产物
+node_modules/
+/desktop/dist/
+*.app/
+*.dmg
+*.zip
+*.exe
+
+# 本地界面调试截图
+/screenshots/
+
+# 系统与编辑器文件
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
