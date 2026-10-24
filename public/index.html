@@ -37,15 +37,15 @@
           <div class="pp-main">
             <div class="pp-stage" id="ppStage">
               <video id="video" playsinline preload="metadata"></video>
+              <div class="pp-playing-title" id="pPlayingTitle"></div>
 
               <div class="pp-loading" id="pLoading" hidden><div class="p-spinner"></div></div>
               <div class="pp-flash" id="pFlash"></div>
               <button class="pp-bigplay" id="pBigPlay" data-pact="toggle" hidden aria-label="播放">
                 <svg viewBox="0 0 64 64" width="48" height="48"><path d="M20 14l30 18-30 18z" fill="#fff"/></svg>
               </button>
-              <div class="pp-badge" id="pnote" hidden></div>
 
-              <!-- 控制栏：优酷网页版样式（进度条贴底，按钮行在其上） -->
+              <!-- 控制栏：时间、进度条、操作按钮分层 -->
               <div class="pp-controls" id="ppControls" aria-label="播放控制栏">
                 <div class="pp-cmask"></div>
                 <div class="pp-cbar">
@@ -59,13 +59,6 @@
                     <button class="pbtn icon" id="nextBtn" data-pact="next" title="下一集（N）">
                       <svg viewBox="0 0 24 24" width="24" height="24"><path d="M6.2 5.8Q5 5 5 6.4V17.6Q5 19 6.2 18.2L14.4 12.8Q15.6 12 14.4 11.2Z" fill="currentColor"/><path d="M17.5 5v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
                     </button>
-                    <div class="pvol-wrap">
-                      <button class="pbtn icon" id="muteBtn" data-pact="mute" title="静音（M）">
-                        <svg viewBox="0 0 24 24" width="24" height="24" id="pVolIcon"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16.5 8.5a5 5 0 010 7M19 6a8.5 8.5 0 010 12" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/></svg>
-                      </button>
-                      <div class="pvol-rail"><input id="volRange" class="pvol" type="range" min="0" max="100" step="1" value="100" aria-label="音量" /></div>
-                    </div>
-                    <span class="ptime" id="ptime"><b>00:00</b> / 00:00</span>
                   </div>
                   <div class="pp-cbar-r">
                     <button class="pbtn text next-ep" id="nextEpBtn" data-pact="next" title="下一集（N）">下一集</button>
@@ -79,9 +72,15 @@
                     </div>
                     <div class="pmenu-wrap">
                       <button class="pbtn icon" id="settingsBtn" data-pact="settings" title="设置">
-                        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="6.6"/><circle cx="12" cy="12" r="2.8"/><path d="M12 1.9v2.6M12 19.5v2.6M1.9 12h2.6M19.5 12h2.6M4.8 4.8l1.9 1.9M17.3 17.3l1.9 1.9M19.2 4.8l-1.9 1.9M6.7 17.3l-1.9 1.9"/></svg>
+                        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 2.5l8.2 4.7v9.6L12 21.5l-8.2-4.7V7.2z"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/></svg>
                       </button>
                       <div class="pmenu" id="settingsMenu" hidden></div>
+                    </div>
+                    <div class="pvol-wrap">
+                      <button class="pbtn icon" id="muteBtn" data-pact="mute" title="静音（M）">
+                        <svg viewBox="0 0 24 24" width="24" height="24" id="pVolIcon"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16.5 8.5a5 5 0 010 7M19 6a8.5 8.5 0 010 12" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/></svg>
+                      </button>
+                      <div class="pvol-rail"><output id="pVolValue">100%</output><input id="volRange" class="pvol" type="range" min="0" max="100" step="1" value="100" aria-label="音量" /></div>
                     </div>
                     <button class="pbtn icon" id="pipBtn" data-pact="pip" title="画中画（P）">
                       <svg viewBox="0 0 24 24" width="24" height="24"><rect x="2.5" y="5" width="19" height="14" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><rect x="12.5" y="10.5" width="6.5" height="5" rx="0.8" fill="currentColor"/></svg>
@@ -94,12 +93,13 @@
                     </button>
                   </div>
                 </div>
+                <span class="ptime" id="ptime"><b>00:00</b> / 00:00</span>
                 <div class="pbar" id="pbar" aria-label="播放进度">
                   <div class="pbar-track"></div>
                   <div class="pbar-buffer" id="pbarBuffer"></div>
                   <div class="pbar-fill" id="pbarFill"></div>
                   <div class="pbar-dot" id="pbarDot"></div>
-                  <div class="pbar-tip" id="pbarTip" hidden></div>
+                  <div class="pbar-tip" id="pbarTip" hidden><div class="pbar-preview"><img id="pPreviewImage" alt="视频画面预览" hidden /><span id="pPreviewStatus">正在加载预览…</span></div><span id="pPreviewTime"></span></div>
                 </div>
               </div>
             </div>
@@ -124,25 +124,12 @@
               <div class="pp-syn" id="ppSynopsis"></div>
               <button class="pp-syn-more" id="ppSynMore" data-pact="moresyn" hidden>展开</button>
 
-              <div class="pp-acts">
-                <button class="pp-act" data-pact="fav" title="收藏">
-                  <svg viewBox="0 0 24 24" width="19" height="19"><path d="M12 4.5l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 10.2l5.4-.8z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
-                </button>
-                <button class="pp-act" data-pact="download" title="下载">
-                  <svg viewBox="0 0 24 24" width="19" height="19"><path d="M12 4v10m0 0l-4-4m4 4l4-4M5 18h14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                </button>
-                <button class="pp-act" data-pact="share" title="分享">
-                  <svg viewBox="0 0 24 24" width="19" height="19"><path d="M8.5 13.5l7-3.6M8.5 10.5l7 3.6" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/><circle cx="6" cy="12" r="2.4" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="18" cy="7" r="2.4" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="18" cy="17" r="2.4" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>
-                </button>
-                <button class="pp-act" data-pact="report" title="反馈">
-                  <svg viewBox="0 0 24 24" width="19" height="19"><circle cx="12" cy="12" r="8.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 8v5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><circle cx="12" cy="16.2" r="1.05" fill="currentColor"/></svg>
-                </button>
-              </div>
-
               <section class="pp-sec" id="ppEpSection">
                 <div class="pp-sec-head">
                   <h3>选集</h3>
                   <span class="pp-sec-meta" id="sideMeta"></span>
+                  <button class="pp-ep-view pp-ep-fetch" id="ppEpFetch" data-pact="fetch-episode-titles" title="从 TMDB 获取分集标题">获取分集标题</button>
+                  <button class="pp-ep-view" id="ppEpView" data-pact="epview" aria-pressed="false" title="切换选集显示方式"><svg class="ep-view-list" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M7 5h9M7 10h9M7 15h9M3 5h.5M3 10h.5M3 15h.5"/></svg><svg class="ep-view-grid" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="3" y="3" width="5" height="5" rx="1"/><rect x="12" y="3" width="5" height="5" rx="1"/><rect x="3" y="12" width="5" height="5" rx="1"/><rect x="12" y="12" width="5" height="5" rx="1"/></svg><span>列表</span></button>
                 </div>
                 <div class="pep-grid" id="pepGrid"></div>
                 <button class="pp-more" id="ppMoreBtn" data-pact="moreeps">查看全部</button>
@@ -173,6 +160,7 @@
           <svg viewBox="0 0 24 24" width="18" height="18"><path d="M5 9l7 6 7-6" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         <span class="ap-crumb" id="apCrumb">正在播放</span>
+        <button class="ap-tobtn" data-aact="edit-song">编辑歌曲信息</button>
         <button class="ap-tobtn" data-aact="info" id="apInfoBtn">歌曲详情</button>
       </div>
 
@@ -331,6 +319,7 @@
     <div class="effects-cards"><article class="effect-card" data-effect-card="clear"><svg class="effect-card-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M17 18a8 8 0 0 1 0-12M13 15a4 4 0 0 1 0-6M31 6a8 8 0 0 1 0 12M35 3a12 12 0 0 1 0 18" transform="translate(0 9)"/><text x="24" y="29" text-anchor="middle" stroke="none" fill="currentColor" font-size="13">3D</text></svg><h3>3D丽音</h3><p>清亮人声 · 立体声场</p><button data-audio-effect="clear" aria-pressed="false">使用</button></article><article class="effect-card" data-effect-card="bass"><svg class="effect-card-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M8 24h4m4-8v16m8-24v32m8-24v16m4-8h4"/></svg><h3>超重低音</h3><p>低频增强 · 浑厚有力</p><button data-audio-effect="bass" aria-pressed="false">使用</button></article><article class="effect-card" data-effect-card="live"><svg class="effect-card-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M6 21v6m6-13v20m6-25v30m6-34v38m6-34v30m6-25v20m6-13v6"/></svg><h3>HiFi现场</h3><p>现场氛围 · 开阔空间</p><button data-audio-effect="live" aria-pressed="false">使用</button></article><article class="effect-card" data-effect-card="surround"><svg class="effect-card-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><ellipse cx="24" cy="24" rx="20" ry="10"/><ellipse cx="24" cy="24" rx="10" ry="20" transform="rotate(35 24 24)"/><circle cx="24" cy="24" r="4"/></svg><h3>3D环绕</h3><p>左右扩展 · 沉浸聆听</p><button data-audio-effect="surround" aria-pressed="false">使用</button></article><article class="effect-card" data-effect-card="off"><svg class="effect-card-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M18 34V12l18-4v22M18 15l18-4"/><ellipse cx="12" cy="34" rx="6" ry="4"/><ellipse cx="30" cy="30" rx="6" ry="4"/></svg><h3>原声</h3><p>保持原始音色</p><button data-audio-effect="off" aria-pressed="false">使用</button></article></div>
     <p class="effects-note">空间音效使用立体声模拟，佩戴耳机体验更佳</p>
   </dialog>
+  <script src="/video-effects.js?v=20261024"></script>
   <script src="/app.js?v=20261024zl"></script>
   <script src="/audio-effects.js?v=20261024zl"></script>
 </body>

@@ -17,6 +17,7 @@ const { mergeScanItems, countVideoFiles } = require('./lib/library-scan');
 const { displayTitle } = require('./lib/library-titles');
 const metadata = require('./lib/metadata');
 const media = require('./lib/media');
+const videoPreview = require('./lib/video-preview');
 const lyrics = require('./lib/lyrics');
 const { deduplicateSongs } = require('./lib/music-library');
 const net = require('./lib/net');
@@ -298,6 +299,15 @@ function findEpisodeByPath(p) {
   return null;
 }
 
+async function enrichEpisodeTitles(item, force) {
+  if (!metadata.hasKey() || item.type === 'movie' || item.type === 'music' || !item.episodes?.length) return;
+  try {
+    await metadata.getEpisodeTitles(item, { force });
+  } catch (e) {
+    // 分集资料缺失或网络异常不影响整库匹配继续。
+  }
+}
+
 async function enrichAll(items, { force = false } = {}) {
   // 豆瓣始终可用，不需要 TMDB Key；有 Key 时 matchItem 会额外走 TMDB 兜底
   if (S.enriching) return { started: false, reason: '正在匹配中' };
@@ -306,7 +316,7 @@ async function enrichAll(items, { force = false } = {}) {
   const total = queue.length;
   S.enrichProgress = matchProgress(0, total);
   let done = 0;
-  S.enrichMsg = `${force ? '正在重新匹配' : '正在获取封面与简介'} 0/${total}`;
+  S.enrichMsg = `${force ? '正在重新匹配' : '正在获取影片资料与分集标题'} 0/${total}`;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // 豆瓣对短时间内的密集请求会返回 302 拦截，串行 + 1 秒间隔最稳（封面是逐条出现的，不影响使用）
   try {
@@ -330,9 +340,10 @@ async function enrichAll(items, { force = false } = {}) {
         } catch (e) {
           /* 忽略单条失败 */
         }
+        await enrichEpisodeTitles(item, force);
         done += 1;
         S.enrichProgress = matchProgress(done, total);
-        S.enrichMsg = `${force ? '正在重新匹配' : '正在获取封面与简介'} ${done}/${total}`;
+        S.enrichMsg = `${force ? '正在重新匹配' : '正在获取影片资料与分集标题'} ${done}/${total}`;
         if (done % 5 === 0) persistLibrary();
         await sleep(force ? 700 : 1000);
       }
@@ -351,6 +362,7 @@ async function enrichAll(items, { force = false } = {}) {
         } catch (e) {
           /* ignore */
         }
+        await enrichEpisodeTitles(item, true);
         retried += 1;
         S.enrichProgress = matchProgress(retried, failed.length, true);
         S.enrichMsg = `正在重试 ${retried}/${failed.length}`;
@@ -540,17 +552,25 @@ async function handleTranscode(req, res, url) {
   }
 
   const ep = findEpisodeByPath(filePath);
-  const info = await media.probe(filePath, ep ? ep.mtime : 0, probeUrl);
+  let info = await media.probe(filePath, ep ? ep.mtime : 0, probeUrl);
+  const requestedAudio = url.searchParams.get('audio');
+  const audioTrack = requestedAudio === null ? (info?.audioTracks?.find(t => t.default)?.index || 0) : Number(requestedAudio);
+  if (!Number.isInteger(audioTrack) || audioTrack < 0 || (requestedAudio !== null && !info?.audioTracks?.some(t => t.index === audioTrack))) return fail(res, '无效音轨');
+  const selectedAudio = info?.audioTracks?.find(t => t.index === audioTrack);
+  if (selectedAudio) info = { ...info, acodec: selectedAudio.codec };
+  const requestedSubtitle = url.searchParams.get('subtitle');
+  const subtitleTrack = requestedSubtitle === null ? null : Number(requestedSubtitle);
+  if (subtitleTrack !== null && (!Number.isInteger(subtitleTrack) || !info?.subtitleTracks?.some(t => t.index === subtitleTrack && t.bitmap))) return fail(res, '无效图形字幕轨');
   let mode = media.decideMode(ext, info);
   if (mode === 'direct') mode = 'remux';
   // 用户明确指定了比源文件更低的画质 → 必须真转码，不能只换封装
   // force=1：客户端解不了源编码（例如浏览器没有 H.265），即使同分辨率也要重编
-  if (quality && info && info.height && (force || Number(quality) < info.height)) mode = 'transcode';
+  if (subtitleTrack !== null || force || (quality && info && info.height && Number(quality) < info.height)) mode = 'transcode';
   if (mode === 'unsupported') return fail(res, '该文件编码无法在浏览器中播放，请安装 ffmpeg', 415);
 
   let handle;
   try {
-    handle = media.startTranscode({ url: probeUrl, start, mode, info, quality });
+    handle = media.startTranscode({ url: probeUrl, start, mode, info, quality, audioTrack, subtitleTrack });
   } catch (e) {
     return fail(res, e.message, 500);
   }
@@ -643,18 +663,23 @@ function buildPlaylist(item, ep, epIndex) {
 let musicWarming = false;
 
 /** 音乐条目里"一首歌"的统一形态：专辑曲目和散装单曲都归一成这个结构 */
+function songMetadata(item, ep) {
+  return store.read('music-metadata.json', {})[ep.path] || {};
+}
+
 function musicSongEntry(item, ep, epIndex) {
   const parsed = ep.songTitle ? { title: ep.songTitle, artist: ep.artist || '' } : scanner.parseTrack(ep.name || '');
   const title = parsed.title || String(ep.name || '').replace(/\.[^.]+$/, '');
+  const custom = songMetadata(item, ep);
   const isAlbum = item.kind === 'album';
   const info = media.peekProbe(ep.path, ep.mtime);
   return {
     key: `${item.id}:${epIndex}`,
     id: item.id,
     ep: epIndex,
-    title,
-    artist: ep.artist || parsed.artist || item.artist || '',
-    album: isAlbum ? item.title : '',
+    title: custom.title ?? title,
+    artist: custom.artist ?? (ep.artist || parsed.artist || item.artist || ''),
+    album: custom.album ?? (isAlbum ? item.title : ''),
     albumArtist: isAlbum ? item.artist || ep.artist || '' : '',
     duration: info && info.duration ? Math.round(info.duration) : 0,
     acodec: (info && info.acodec) || '',
@@ -663,7 +688,7 @@ function musicSongEntry(item, ep, epIndex) {
     mtime: ep.mtime || item.mtime || 0,
     dir: path.dirname(ep.path),
     // fallback=0：没封面就 404，让前端用渐变/首字母占位，而不是塞一张带歌名的 SVG 图
-    art: `/api/cover?item=${encodeURIComponent(item.id)}&ep=${epIndex}&fallback=0`
+    art: `/api/cover?item=${encodeURIComponent(item.id)}&ep=${epIndex}&fallback=0${custom.updated ? `&v=${custom.updated}` : ''}`
   };
 }
 
@@ -858,10 +883,11 @@ async function handlePlay(req, res, url) {
     typeLabel,
     epIndex,
     episodeName: ep.name,
-    episodeTitle: ep.songTitle || '',
-    episodeArtist: ep.artist || '',
+    episodeTitle: (isAudio && songMetadata(item, ep).title) || ep.songTitle || '',
+    episodeArtist: isAudio ? (songMetadata(item, ep).artist ?? ep.artist ?? '') : ep.artist || '',
     kind: item.kind,
     audio: isAudio,
+    song: isAudio ? musicSongEntry(item, ep, epIndex) : null,
     artist: item.artist || '',
     mode,
     playable: mode !== 'unsupported',
@@ -878,6 +904,9 @@ async function handlePlay(req, res, url) {
     vcodec: info ? info.vcodec : '',
     acodec: info ? info.acodec : '',
     subtitle,
+    audioTracks: info?.audioTracks || [],
+    defaultAudioTrack: info?.audioTracks?.find(t => t.default)?.index || 0,
+    subtitleTracks: info?.subtitleTracks || [],
     playlist,
     ffmpeg: !!media.findFfmpeg(),
     next: item.episodes[epIndex + 1] ? epIndex + 1 : null,
@@ -905,6 +934,46 @@ async function handlePlay(req, res, url) {
     directors: meta.director || [],
     yearAreaGenres
   });
+}
+
+async function handleSubtitleTrack(req, res, url) {
+  const item = findItem(url.searchParams.get('item'));
+  const epIndex = Number(url.searchParams.get('ep') || 0);
+  const index = Number(url.searchParams.get('track'));
+  if (!item || !Number.isInteger(epIndex) || !item.episodes[epIndex]) return fail(res, '找不到视频', 404);
+  const ep = item.episodes[epIndex];
+  if (!isAllowedPath(ep.path)) return fail(res, '不允许的路径', 403);
+  const input = providerOfPath(ep.path) === 'local' ? ep.path : `http://127.0.0.1:${PORT}/api/stream?path=${encodeURIComponent(ep.path)}`;
+  const info = await media.probe(ep.path, ep.mtime, input);
+  const track = info?.subtitleTracks?.find(t => t.index === index);
+  if (!Number.isInteger(index) || !track || track.bitmap) return fail(res, '无效文本字幕轨');
+  try {
+    const text = await media.extractSubtitle(input, media.probeKey(ep.path, ep.mtime), index);
+    if (res.destroyed) return;
+    res.writeHead(200, { 'Content-Type': 'text/vtt; charset=utf-8', 'Cache-Control': 'private, max-age=3600' });
+    res.end(text);
+  } catch (e) { if (!res.destroyed) fail(res, e.message, 500); }
+}
+
+async function handleVideoPreview(req, res, url) {
+  const item = findItem(url.searchParams.get('item'));
+  const index = Number(url.searchParams.get('ep') || 0);
+  const time = Number(url.searchParams.get('time'));
+  if (!item || !Number.isInteger(index) || index < 0 || !item.episodes[index]) return fail(res, '找不到该视频', 404);
+  const ep = item.episodes[index];
+  if (media.isAudioFile(ep.path) || !isAllowedPath(ep.path)) return fail(res, '无法预览该文件', 403);
+  if (!Number.isFinite(time) || time < 0 || time > 604800) return fail(res, '无效预览时间');
+  const info = media.peekProbe(ep.path, ep.mtime);
+  const position = info && info.duration ? Math.min(time, Math.max(0, info.duration - 1)) : time;
+  const input = providerOfPath(ep.path) === 'local' ? ep.path : `http://127.0.0.1:${PORT}/api/stream?path=${encodeURIComponent(ep.path)}`;
+  try {
+    const data = await videoPreview.thumbnail({ filePath: ep.path, mtime: ep.mtime, url: input, time: position });
+    if (res.destroyed) return;
+    res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Content-Length': data.length, 'Cache-Control': 'private, max-age=3600' });
+    res.end(data);
+  } catch (e) {
+    if (!res.destroyed) fail(res, e.message, 503);
+  }
 }
 
 async function handleSubtitle(req, res, url) {
@@ -1121,6 +1190,18 @@ async function handleCover(req, res, url) {
   if (!item || !item.episodes.length) return fail(res, '无封面', 404);
   const epIndex = Math.max(0, Number(url.searchParams.get('ep') || 0));
   const ep = item.episodes[epIndex] || item.episodes[0];
+  const custom = songMetadata(item, ep);
+  if (custom.cover) {
+    res.setHeader('Cache-Control', 'no-store');
+    if (custom.cover.startsWith('data:image/')) {
+      const [header, encoded] = custom.cover.split(',');
+      res.setHeader('Content-Type', header.slice(5).split(';')[0]);
+      return res.end(Buffer.from(encoded, 'base64'));
+    }
+    const local = await metadata.cacheImage(custom.cover);
+    if (!local) return fail(res, '封面获取失败', 404);
+    return serveLocalFile(req, res, local);
+  }
   const dir = path.dirname(ep.path);
   const candidate = await findCover(dir);
 
@@ -1387,10 +1468,45 @@ async function route(req, res) {
         });
       }
 
+      if (pathname === '/api/episode-titles') {
+        const item = findItem(url.searchParams.get('item'));
+        if (!item) return fail(res, '找不到该影片', 404);
+        return json(res, { ok: true, titles: await metadata.getEpisodeTitles(item, { force: url.searchParams.get('refresh') === '1' }) });
+      }
       if (pathname === '/api/play') return handlePlay(req, res, url);
       if (pathname === '/api/stream') return handleStream(req, res, url);
       if (pathname === '/api/transcode') return handleTranscode(req, res, url);
+      if (pathname === '/api/subtitle-track') return handleSubtitleTrack(req, res, url);
+      if (pathname === '/api/video-preview') return handleVideoPreview(req, res, url);
       if (pathname === '/api/subtitle') return handleSubtitle(req, res, url);
+      if (pathname === '/api/music/match' && req.method === 'POST') {
+        const body = await readBody(req);
+        const title = String(body.title || '').trim().slice(0, 200);
+        if (!title) return fail(res, '请输入歌名后再匹配', 400);
+        const results = await lyrics.searchSongs({ title, artist: String(body.artist || '').trim().slice(0, 200), duration: Number(body.duration) || 0 });
+        return json(res, { ok: true, results });
+      }
+      if (pathname === '/api/music/metadata' && req.method === 'GET') {
+        const item = findItem(url.searchParams.get('item'));
+        const ep = item && item.episodes[Number(url.searchParams.get('ep') || 0)];
+        if (!item || item.type !== 'music' || !ep) return fail(res, '找不到歌曲', 404);
+        return json(res, { ok: true, ...songMetadata(item, ep) });
+      }
+      if (pathname === '/api/music/metadata' && req.method === 'POST') {
+        const body = await readBody(req);
+        const item = findItem(body.itemId);
+        const ep = item && item.episodes[body.ep];
+        if (!item || item.type !== 'music' || !ep) return fail(res, '找不到歌曲', 404);
+        const title = String(body.title || '').trim().slice(0, 200);
+        if (!title) return fail(res, '请输入歌名', 400);
+        const cover = String(body.cover || '').trim();
+        if (cover && !/^https?:\/\//i.test(cover) && !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(cover)) return fail(res, '请使用图片网址或 PNG、JPEG、WebP 图片', 400);
+        const records = { ...store.read('music-metadata.json', {}) };
+        records[ep.path] = { title, artist: String(body.artist || '').trim().slice(0, 200), album: String(body.album || '').trim().slice(0, 200), cover, updated: Date.now() };
+        store.write('music-metadata.json', records);
+        return json(res, { ok: true, song: musicSongEntry(item, ep, Number(body.ep)) });
+      }
+
       if (pathname === '/api/cover') return handleCover(req, res, url);
 
       if (pathname === '/api/progress' && req.method === 'POST') {
@@ -1444,7 +1560,7 @@ async function route(req, res) {
         const item = findItem(body.itemId);
         if (!item) return fail(res, '找不到该影片', 404);
         const kind = body.type || (item.type === 'movie' ? 'movie' : 'tv');
-        const list = await metadata.searchCandidates(body.query || item.title, kind);
+        const list = await metadata.searchCandidates(body.query || item.title, kind, body.provider);
         return json(res, { ok: true, results: list });
       }
 

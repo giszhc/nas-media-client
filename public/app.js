@@ -100,6 +100,23 @@ const FULL_D = 'M4 10V4h6M20 10V4h-6M4 14v6h6M20 14v6h-6';
 const FULL_EXIT_D = 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5';
 
 /* -------------------------------- 主题切换 -------------------------------- */
+const ACCENT_COLORS = [
+  ['blue', '海洋蓝', '#0078e8'], ['cyan', '晴空青', '#00b5df'],
+  ['teal', '翡翠青', '#00c4ae'], ['green', '森林绿', '#00cc78'],
+  ['violet', '鸢尾紫', '#8057f2'], ['coral', '珊瑚橙', '#ff6548'],
+  ['orange', '暖橙', '#ff9200'], ['amber', '琥珀金', '#f2b600'],
+  ['rose', '蔷薇红', '#ef0050'], ['pink', '莓果粉', '#f20b9b']
+];
+function applyAccent(value, persist = true) {
+  const color = ACCENT_COLORS.find(([id]) => id === value) || ACCENT_COLORS[0];
+  document.documentElement.dataset.accent = color[0];
+  try { if (persist) localStorage.setItem('yy_accent', color[0]); } catch (e) {}
+  document.querySelectorAll('[data-act="accent"]').forEach(button => {
+    button.setAttribute('aria-pressed', String(button.dataset.color === color[0]));
+  });
+  const label = document.querySelector('#accentName');
+  if (label) label.textContent = color[1];
+}
 const THEME_KEY = 'yy_theme';
 function applyTheme(t, persist = true) {
   document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
@@ -108,6 +125,9 @@ function applyTheme(t, persist = true) {
   } catch (e) {}
 }
 function initTheme() {
+  let accent = 'blue';
+  try { accent = localStorage.getItem('yy_accent') || accent; } catch (e) {}
+  applyAccent(accent, false);
   let t = null;
   try {
     t = localStorage.getItem(THEME_KEY);
@@ -275,6 +295,7 @@ function renderTopbar() {
       </button>
     </div>`;
   syncTopbarSearch();
+  syncScanButtons();
 }
 
 function isMusicSearchContext() {
@@ -312,7 +333,23 @@ function go(hash) {
   }
 }
 
+// 页面只保留一段入场动画；快速导航会取消上一段，避免叠加与闪回。
+let routeMotion = null;
+let routeVersion = 0;
+function animateRouteView() {
+  const view = $('#view');
+  if (routeMotion) { routeMotion.cancel(); routeMotion = null; }
+  if (view.hidden || !view.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const animation = view.animate([
+    { opacity: .35, transform: 'translateY(14px)' },
+    { opacity: 1, transform: 'translateY(0)' }
+  ], { duration: 300, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' });
+  routeMotion = animation;
+  animation.onfinish = () => { if (routeMotion === animation) routeMotion = null; };
+}
+
 function route() {
+  const version = ++routeVersion;
   clearInterval(state.heroTimer);
   const raw = (location.hash || '#/').replace(/^#/, '');
   const [pathPart, queryStr] = raw.split('?');
@@ -325,17 +362,21 @@ function route() {
     state.route = { name: 'login' };
     renderSidebar();
     renderLogin();
+    animateRouteView();
     return;
   }
 
   if (segs[0] !== 'play' && AU.open) hideAudioPage();
+  if (segs[0] !== 'play' && !$('#player').hidden) closePlayer();
 
   if (segs[0] === 'item' || segs[0] === 'play') {
     state.route = { name: 'item', id: segs[1] };
     renderSidebar();
     renderDetail(segs[1]);
     if (segs[0] === 'play') {
-      setTimeout(() => openPlayback(segs[1], Number(segs[2] || 0)), 120);
+      setTimeout(() => {
+        if (version === routeVersion) openPlayback(segs[1], Number(segs[2] || 0));
+      }, 60);
     }
   } else if (segs[0] === 'list') {
     state.route = { name: 'list', type: segs[1] || 'all', filtering: query.get('filter') === '1' };
@@ -359,6 +400,7 @@ function route() {
   $('#main').scrollTo({ top: 0, behavior: 'instant' });
   syncTopbarSearch();
   if (view) view.dataset.rendered = '1';
+  if (segs[0] !== 'play') animateRouteView();
   syncMiniBar();
 }
 
@@ -832,15 +874,17 @@ async function renderDetail(id) {
     <div class="skeleton" style="height:60px;width:70%;margin-top:20px"></div></div></div></div>`;
   try {
     const d = await api(`/api/item?id=${encodeURIComponent(id)}`);
+    if (state.route.name !== 'item' || state.route.id !== id) return;
     state.detail = d;
     view.innerHTML = detailHTML(d);
   } catch (e) {
+    if (state.route.name !== 'item' || state.route.id !== id) return;
     view.innerHTML = `<div class="empty"><h3>打开失败</h3><p>${esc(e.message)}</p></div>`;
   }
 }
 
 /* -------------------------------- 播放器 -------------------------------- */
-const SPEEDS = [2, 1.5, 1.25, 1, 0.75, 0.5];
+const SPEEDS = [3, 2, 1.75, 1.5, 1.25, 1, 0.75, 0.5];
 
 const Player = {
   data: null,
@@ -874,7 +918,6 @@ function playerEls() {
     dot: $('#pbarDot'),
     tip: $('#pbarTip'),
     time: $('#ptime'),
-    note: $('#pnote'),
     topNext: $('#playerNext'),
     sideMeta: $('#sideMeta'),
     sideRating: $('#sideRating'),
@@ -982,23 +1025,86 @@ function heightLabel(h) {
   return h >= 2160 ? '4K' : h >= 1440 ? '2K' : h >= 1080 ? '1080P' : h >= 720 ? '720P' : `${h}P`;
 }
 
-/** 可选清晰度：低于源分辨率的档位；浏览器解不了 H.265 时补一个同分辨率的 H.264 档 */
+/** 指定清晰度低于源分辨率；原画档自动处理编码兼容。 */
 function qualityTiers(d) {
-  const base = (d.qualities || []).filter((q) => !d.maxHeight || q.height < d.maxHeight);
-  if (d.mode === 'direct' && d.vcodec === 'hevc' && !canPlayHevc() && d.maxHeight) {
-    return [
-      { id: String(d.maxHeight), label: `${heightLabel(d.maxHeight)} H.264`, height: d.maxHeight, forced: true }
-    ].concat(base);
+  return (d.qualities || []).filter(q => !d.maxHeight || q.height < d.maxHeight);
+}
+function needsHevcCompatibility() {
+  return Player.data?.vcodec === 'hevc' && !canPlayHevc();
+}
+
+function selectedSubtitle() {
+  return (Player.data?.subtitleTracks || []).find(t => String(t.index) === Player.subtitleTrack);
+}
+function customMediaTracks() {
+  return Player.audioTrack !== (Player.data?.defaultAudioTrack || 0) || !!selectedSubtitle()?.bitmap;
+}
+function trackName(track, type) {
+  const languages = { chi: '中文', zho: '中文', cmn: '普通话', yue: '粤语', eng: '英语', jpn: '日语', kor: '韩语', fra: '法语', fre: '法语', spa: '西班牙语', ger: '德语', deu: '德语', und: '' };
+  const label = [track.title, languages[track.language] ?? track.language].filter(Boolean).join(' · ') || `${type} ${track.index + 1}`;
+  return `${label}${track.channels ? ` · ${track.channels} 声道` : ''}${track.bitmap ? ' · 图形字幕' : ''}`;
+}
+function applySubtitleTrack() {
+  const video = $('#video');
+  Array.from(video.textTracks || []).forEach(t => { t.mode = 'disabled'; });
+  video.querySelectorAll('track').forEach(t => t.remove());
+  const selected = selectedSubtitle();
+  const source = Player.subtitleTrack === 'external' ? Player.data?.subtitle : selected && !selected.bitmap
+    ? `/api/subtitle-track?item=${encodeURIComponent(Player.itemId)}&ep=${Player.epIndex}&track=${selected.index}` : '';
+  if (!source) return;
+  const base = Player.base;
+  const track = document.createElement('track');
+  track.kind = 'subtitles';
+  track.label = selected ? trackName(selected, '字幕') : '外挂字幕';
+  track.default = true;
+  track.src = source;
+  track.addEventListener('load', () => {
+    if (!track.isConnected) return;
+    // 兼容流从零计时，字幕仍使用原片时间，按本次起点换算。
+    if (base && track.track.cues) {
+      for (const cue of Array.from(track.track.cues)) {
+        if (cue.endTime <= base) track.track.removeCue(cue);
+        else { cue.startTime = Math.max(0, cue.startTime - base); cue.endTime -= base; }
+      }
+    }
+    track.track.mode = 'showing';
+  });
+  track.addEventListener('error', () => { if (track.isConnected) toast('字幕加载失败，可切换其他字幕轨'); });
+  video.appendChild(track);
+  track.track.mode = 'showing';
+}
+function switchMediaTrack(kind, value) {
+  const d = Player.data;
+  if (!d) return;
+  const oldBitmap = !!selectedSubtitle()?.bitmap;
+  const position = absoluteTime();
+  const video = $('#video');
+  const playing = !video.paused;
+  if (kind === 'audio') {
+    if (!(d.audioTracks || []).some(t => String(t.index) === value)) return;
+    if (!d.ffmpeg && Number(value) !== d.defaultAudioTrack) return toast('切换音轨需要 ffmpeg');
+    Player.audioTrack = Number(value);
+  } else {
+    const track = (d.subtitleTracks || []).find(t => String(t.index) === value);
+    if (!['off', 'external'].includes(value) && !track) return;
+    if (track?.bitmap && !d.ffmpeg) return toast('图形字幕需要 ffmpeg');
+    Player.subtitleTrack = value;
   }
-  return base;
+  if (kind === 'audio' || oldBitmap || selectedSubtitle()?.bitmap) {
+    showLoading(true);
+    applySrc(position);
+    if (playing) video.play().catch(() => showBigPlay(true));
+  } else applySubtitleTrack();
+  renderSettingsMenu();
+  scheduleHide();
 }
 
 /** 当前选择是否等同于源文件本身（此时没必要转码） */
 function useDirect() {
   const d = Player.data;
-  if (!d || d.mode !== 'direct') return false;
+  if (!d || d.mode !== 'direct' || Player.recovery || customMediaTracks()) return false;
+  if (needsHevcCompatibility()) return false;
   if (Player.quality === 'auto') return true;
-  if (d.vcodec === 'hevc' && !canPlayHevc()) return false;
   return Number(Player.quality) === Number(d.maxHeight);
 }
 
@@ -1010,21 +1116,32 @@ function transcodeBase() {
   return m ? m[1] : d.url || '';
 }
 
-function srcFor(start) {
+function originalSrcFor(start) {
   const d = Player.data;
   if (!d) return '';
   const s = Math.floor(Math.max(0, start || 0));
+  if (needsHevcCompatibility() && Player.quality === 'auto') return `${transcodeBase()}&quality=source&force=1&start=${s}`;
+  if (Player.recovery) return `${transcodeBase()}&start=${s}${Player.recovery === 'transcode' ? '&force=1' : ''}`;
   if (useDirect()) return d.url;
   if (Player.quality === 'auto') return s > 0 ? `${d.url}&start=${s}` : d.url;
   const forced = d.maxHeight && Number(Player.quality) >= Number(d.maxHeight) ? '&force=1' : '';
   return `${transcodeBase()}&quality=${Player.quality}${forced}&start=${s}`;
 }
 
+function srcFor(start) {
+  if (!Player.data) return '';
+  let src = customMediaTracks() && Player.quality === 'auto' && !Player.recovery && !needsHevcCompatibility()
+    ? `${transcodeBase()}&start=${Math.floor(Math.max(0, start || 0))}` : originalSrcFor(start);
+  if (!useDirect() && Player.data.audioTracks?.length) src += `&audio=${Player.audioTrack || 0}`;
+  if (selectedSubtitle()?.bitmap) src += `&subtitle=${selectedSubtitle().index}`;
+  return src;
+}
+
 /** 当前是否可以直接用 currentTime 定位 */
 function canSeek() {
   const d = Player.data;
   if (!d) return false;
-  return useDirect() || (Player.quality === 'auto' && !!d.seekable);
+  return !Player.recovery && !needsHevcCompatibility() && !customMediaTracks() && (useDirect() || (Player.quality === 'auto' && !!d.seekable));
 }
 
 function qualityLabel(q) {
@@ -1040,19 +1157,42 @@ function qualityLabel(q) {
   return /^\d+$/.test(String(q)) ? `${heightLabel(Number(q))}` : q;
 }
 
-function modeNote(d) {
-  if (d.audio) {
-    const fmt = d.acodec ? String(d.acodec).toUpperCase() : '';
-    return useDirect() ? `音频直连${fmt ? ' · ' + fmt : ''}` : '音频转码 · MP3';
-  }
-  if (useDirect()) return `原画直连${d.is4k ? ' · 4K' : ''}`;
-  if (Player.quality !== 'auto') {
-    const enc = d.encoder === 'h264_videotoolbox' || d.encoder === 'hevc_videotoolbox' ? '硬件编码' : '软件编码';
-    return `实时转码 · ${qualityLabel(Player.quality)} · ${enc}`;
-  }
-  if (d.mode === 'remux') return '无损封装播放';
-  const enc = d.encoder === 'h264_videotoolbox' || d.encoder === 'hevc_videotoolbox' ? '硬件编码' : '软件编码';
-  return `实时转码 · ${enc}`;
+let videoPageMotion = null;
+let videoPageOpen = false;
+let videoLoadVersion = 0;
+function animateVideoPage(open) {
+  const page = $('#player');
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const current = videoPageMotion ? getComputedStyle(page) : null;
+  const from = current ? { transform: current.transform, opacity: current.opacity }
+    : { transform: open && !reduced ? 'translateY(100vh)' : 'translateY(0)', opacity: 1 };
+  if (videoPageMotion) videoPageMotion.cancel();
+  videoPageMotion = null;
+  videoPageOpen = open;
+  page.hidden = false;
+  page.inert = !open;
+  page.classList.add('is-transitioning');
+  const finish = () => {
+    page.hidden = !open;
+    page.classList.remove('is-transitioning');
+    if (open) $('#view').hidden = true;
+    else if (!videoPageOpen) {
+      const video = $('#video');
+      video.removeAttribute('src');
+      video.load();
+    }
+  };
+  if (!page.animate || reduced) { finish(); return; }
+  const animation = page.animate([from,
+    { transform: open ? 'translateY(0)' : 'translateY(100vh)', opacity: 1 }
+  ], { duration: open ? 420 : 280, easing: open ? 'cubic-bezier(0.16, 1, 0.3, 1)' : 'cubic-bezier(0.4, 0, 0.8, 0.4)', fill: 'both' });
+  videoPageMotion = animation;
+  animation.onfinish = () => {
+    if (videoPageMotion !== animation) return;
+    finish();
+    videoPageMotion = null;
+    animation.cancel();
+  };
 }
 
 async function openPlayer(itemId, epIndex = 0) {
@@ -1061,9 +1201,11 @@ async function openPlayer(itemId, epIndex = 0) {
   if (AU.open) hideAudioPage();
   if (AU.data) auEl().pause();
   $('#miniBar').hidden = true;
+  const entering = !videoPageOpen;
   els.root.hidden = false;
   const view = $('#view');
-  if (view) view.hidden = true; // 页面内嵌布局：播放页覆盖在首页之上，但保留侧栏与顶栏
+  if (view) view.hidden = !entering;
+  if (entering) animateVideoPage(true);
   els.root.classList.remove('show-ui'); // 打开时不强制常驻控制层，默认隐藏，悬停/播放才唤出
   els.root.classList.remove('cursor-hide');
   els.root.classList.remove('is-theater');
@@ -1081,23 +1223,38 @@ async function openPlayer(itemId, epIndex = 0) {
 }
 
 async function loadEpisode(itemId, epIndex, opts = {}) {
+  resetVideoPreview();
+  const loadVersion = ++videoLoadVersion;
   const els = playerEls();
   showLoading(true);
   let data;
   try {
     data = await api(`/api/play?item=${encodeURIComponent(itemId)}&ep=${epIndex}`);
   } catch (e) {
+    if (loadVersion !== videoLoadVersion || !videoPageOpen) return;
     showLoading(false);
     throw e;
   }
+  if (loadVersion !== videoLoadVersion || !videoPageOpen) return;
   if (!data.playable) {
     showLoading(false);
     throw new Error('该文件编码暂不支持浏览器播放，请安装 ffmpeg 后重试');
   }
 
   Player.data = data;
+  Player.audioTrack = data.defaultAudioTrack || 0;
+  Player.subtitleTrack = 'off';
+  try {
+    const saved = JSON.parse(localStorage.getItem('yy_video_session_v1') || 'null');
+    if (saved?.itemId === itemId && saved.epIndex === epIndex) {
+      if ((data.audioTracks || []).some(t => t.index === saved.audioTrack)) Player.audioTrack = saved.audioTrack;
+      if ((data.subtitleTracks || []).some(t => String(t.index) === saved.subtitleTrack) || (saved.subtitleTrack === 'external' && data.subtitle)) Player.subtitleTrack = saved.subtitleTrack;
+    }
+  } catch (e) {}
+  Player.recovery = '';
   Player.itemId = itemId;
   Player.epIndex = epIndex;
+  history.replaceState(null, '', `#/play/${itemId}/${epIndex}`);
   Player.lastSave = 0;
   Player.duration = data.duration || 0;
 
@@ -1111,6 +1268,7 @@ async function loadEpisode(itemId, epIndex, opts = {}) {
 
   const ep = data.episodes[epIndex];
   els.title.textContent = data.title;
+  $('#pPlayingTitle').textContent = [data.title, data.episodes.length > 1 && ep ? `${ep.season > 1 ? `第${ep.season}季 · ` : ''}第${ep.episode || epIndex + 1}集` : '', episodeDisplayTitle(ep)].filter(Boolean).join(' · ');
   const crumb = $('#crumbName');
   if (crumb) crumb.textContent = data.title;
   els.sub.textContent = [
@@ -1129,19 +1287,6 @@ async function loadEpisode(itemId, epIndex, opts = {}) {
   renderSpeedMenu();
   renderSettingsMenu();
 
-  // 浏览器解不了 HEVC（很多 4K 片源都是 H.265）→ 自动转 H.264，优先保持原分辨率
-  if (Player.quality === 'auto' && data.vcodec === 'hevc' && !canPlayHevc() && data.mode === 'direct') {
-    const lower = qualityTiers(data);
-    if (lower.length) {
-      Player.quality = lower[0].id;
-      renderQualityMenu();
-      toast(`当前浏览器不支持 H.265 直接播放，已切换到 ${lower[0].label}`);
-    }
-  }
-
-  els.note.textContent = modeNote(data);
-  els.note.hidden = !data || !data.playable;
-
   els.topNext.disabled = data.next === null || data.next === undefined;
   els.nextBtn.disabled = els.topNext.disabled;
   els.nextEpBtn.disabled = els.topNext.disabled;
@@ -1158,10 +1303,25 @@ async function loadEpisode(itemId, epIndex, opts = {}) {
 
   renderInfo(data);
   renderEpisodes(epIndex);
+  // 标题异步获取，不阻塞开始播放；换集后忽略过期响应。
+  if (!data.audio && data.episodes.length > 1) {
+    fetch(`/api/episode-titles?item=${encodeURIComponent(itemId)}`).then(r => r.json()).then(result => {
+      if (Player.data !== data || !result.ok) return;
+      for (const e of data.episodes) e.title = result.titles?.[e.index] || '';
+      const current = data.episodes[epIndex];
+      $('#pPlayingTitle').textContent = [data.title, `${current.season > 1 ? `第${current.season}季 · ` : ''}第${current.episode || epIndex + 1}集`, episodeDisplayTitle(current)].filter(Boolean).join(' · ');
+      renderEpisodes(epIndex);
+    }).catch(() => {});
+  }
+
   renderRecommend(itemId, data.type);
 
   // 续播位置
   let resume = Number(opts.start || 0);
+  try {
+    const saved = JSON.parse(localStorage.getItem('yy_video_session_v1') || 'null');
+    if (!resume && saved && saved.itemId === itemId && saved.epIndex === epIndex && (!data.duration || saved.position < data.duration - 2)) resume = Math.max(0, Number(saved.position) || 0);
+  } catch (e) {}
   if (!resume) {
     const hit = state.lib && allItems().find((i) => i.id === itemId);
     const p = hit && hit.progress;
@@ -1184,6 +1344,7 @@ function applySrc(target) {
   Player.resumeTo = direct ? target : 0;
   els.video.src = srcFor(direct ? 0 : target);
   els.video.load();
+  applySubtitleTrack();
   updateBar(target, Player.duration);
   els.buffer.style.width = '0%';
 }
@@ -1214,6 +1375,44 @@ function renderRecommend(currentId, type) {
     .join('');
 }
 
+// 缺少真实分集名称时留空，过滤元数据源的通用集数占位标题。
+function episodeDisplayTitle(episode) {
+  const title = String(episode?.title || '').trim();
+  return /^(?:第\s*[\d一二三四五六七八九十百零〇两]+\s*[集话話回]|(?:episode|ep)\s*[.\-]?\s*\d+|s\d+e\d+|\d+)$/i.test(title) ? '' : title;
+}
+
+async function fetchEpisodeTitles(btn) {
+  const data = Player.data;
+  if (!data || data.audio || btn.disabled) return;
+  const itemId = Player.itemId;
+  btn.disabled = true;
+  btn.textContent = '获取中…';
+  btn.setAttribute('aria-busy', 'true');
+  try {
+    const response = await fetch(`/api/episode-titles?item=${encodeURIComponent(itemId)}&refresh=1`);
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || '获取失败，请稍后重试');
+    if (Player.data !== data) return;
+    let count = 0;
+    for (const episode of data.episodes) {
+      const title = result.titles?.[episode.index];
+      if (title && episodeDisplayTitle({ title })) { episode.title = title; count++; }
+    }
+    if (!count) { toast('暂未找到分集标题，可检查 TMDB 配置或影片匹配'); return; }
+    localStorage.setItem('yy_episode_list', 'true');
+    renderEpisodes(Player.epIndex);
+    const current = data.episodes.find(e => e.index === Player.epIndex);
+    if (current) $('#pPlayingTitle').textContent = [data.title, `${current.season > 1 ? `第${current.season}季 · ` : ''}第${current.episode || Player.epIndex + 1}集`, episodeDisplayTitle(current)].filter(Boolean).join(' · ');
+    toast(`已获取 ${count} 集标题`);
+  } catch (error) {
+    if (Player.data === data) toast(error.message || '获取失败，请稍后重试');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '获取分集标题';
+    btn.removeAttribute('aria-busy');
+  }
+}
+
 function renderEpisodes(current) {
   const els = playerEls();
   const list = (Player.data && Player.data.episodes) || [];
@@ -1222,10 +1421,15 @@ function renderEpisodes(current) {
     .map(
       (e) =>
         `<button class="pep ${e.index === current ? 'on' : ''}" data-act="pep" data-ep="${e.index}" title="${esc(
-          e.name
-        )}">${e.episode || e.index + 1}</button>`
+          e.title || e.name
+        )}" aria-current="${e.index === current ? 'true' : 'false'}"><span class="pep-num">${e.season > 1 ? `S${e.season} · ` : ''}${e.episode || e.index + 1}</span><span class="pep-name">${esc(episodeDisplayTitle(e))}</span></button>`
     )
     .join('');
+  let listView = false;
+  try { listView = localStorage.getItem('yy_episode_list') === 'true'; } catch (e) {}
+  els.pepGrid.classList.toggle('list-view', listView);
+  $('#ppEpView span').textContent = listView ? '宫格' : '列表';
+  $('#ppEpView').setAttribute('aria-pressed', String(listView));
   els.sideMeta.textContent = list.length > 1 ? `共 ${list.length} ${audio ? '首' : '集'}` : '';
   const head = $('#ppEpSection .pp-sec-head h3');
   if (head) head.textContent = audio ? '曲目' : '选集';
@@ -1256,29 +1460,25 @@ function renderQualityMenu() {
   els.qualityBtn.classList.toggle('on', Player.quality !== 'auto');
   // 只列出真正低于源分辨率的档位（等于源分辨率就是原画，重复没意义）
   const tiers = qualityTiers(d);
-  const hasTiers = tiers.length > 0;
-  els.qualityBtn.hidden = !hasTiers;
-  if (!hasTiers) {
-    els.qualityMenu.hidden = true;
-    els.qualityMenu.innerHTML = '';
-    if (Player.quality !== 'auto') Player.quality = 'auto';
+  els.qualityBtn.hidden = false;
+  if (Player.quality === 'auto' && d.maxHeight) els.qualityBtn.textContent = heightLabel(d.maxHeight);
+  const items = [{ id: 'auto', height: d.maxHeight, label: d.maxHeight ? `原画 ${d.maxHeight}P` : '原画' }]
+    .concat(tiers.map(q => ({ id: q.id, height: q.height, label: q.label })));
+  const single = items.length === 1;
+  els.qualityMenu.classList.toggle('quality-single', single);
+  els.qualityMenu.classList.toggle('quality-panel', !single);
+  if (single) {
+    els.qualityMenu.innerHTML = `<button data-q="auto" class="on" aria-pressed="true">${esc(items[0].label)}</button>`;
     return;
   }
-  const items = [
-    {
-      id: 'auto',
-      label: d.maxHeight ? `原画 ${d.maxHeight}P` : '原画',
-      blocked: d.vcodec === 'hevc' && !canPlayHevc() && d.mode !== 'transcode'
-    }
-  ].concat(tiers.map((q) => ({ id: q.id, label: q.label })));
-  els.qualityMenu.innerHTML = items
-    .map(
-      (it) =>
-        `<button data-q="${it.id}"${it.blocked ? ' disabled' : ''} class="${
-          it.id === Player.quality ? 'on' : ''
-        }">${esc(it.label)}${it.blocked ? '<em>H.265 不支持</em>' : it.id === Player.quality ? icon('check', 13) : ''}</button>`
-    )
-    .join('');
+  const name = h => h >= 2160 ? '超高清' : h >= 1080 ? '高清' : h >= 720 ? '准高清' : '标清';
+  els.qualityMenu.innerHTML = `<div class="pq-header"><span>画质</span><button data-pact="settings" title="打开播放器高级设置">高级设置 ${icon('right', 14)}</button></div><div class="pq-grid">` + items.map(it => {
+    const source = it.id === 'auto';
+    const resolution = it.height >= 2160 ? '4K' : it.height ? `${it.height}P` : '原画';
+    const detail = source ? (d.resolution || '原始分辨率') : '兼容播放';
+    return `<button data-q="${it.id}" class="pq-card ${it.height >= 1080 ? 'pq-wide' : ''} ${it.id === Player.quality ? 'on' : ''}" aria-pressed="${it.id === Player.quality}">${source ? '<span class="pq-badge">原画</span>' : ''}<span class="pq-name">${name(it.height)}</span><strong>${resolution}</strong><small>${esc(detail)}</small></button>`;
+  }).join('') + '</div>';
+
 }
 
 function renderSpeedMenu() {
@@ -1287,10 +1487,74 @@ function renderSpeedMenu() {
   els.speedBtn.classList.toggle('on', Player.speed !== 1);
   els.speedMenu.innerHTML = SPEEDS.map(
     (s) =>
-      `<button data-rate="${s}" class="${s === Player.speed ? 'on' : ''}">${s === 1 ? '正常' : s + 'x'}${
+      `<button data-rate="${s}" class="${s === Player.speed ? 'on' : ''}">${Number.isInteger(s) ? s.toFixed(1) : s}X${
         s === Player.speed ? icon('check', 13) : ''
       }</button>`
   ).join('');
+}
+
+// 独立抽帧，不修改主播放器的时间、音量或播放状态。
+const videoPreviewState = { timer: null, busy: false, wanted: null, cache: new Map(), controller: null };
+function resetVideoPreview() {
+  clearTimeout(videoPreviewState.timer);
+  videoPreviewState.wanted = null;
+  if (videoPreviewState.controller) videoPreviewState.controller.abort();
+  $('#pbarTip').hidden = true;
+}
+async function fetchVideoPreview() {
+  const state = videoPreviewState;
+  const target = state.wanted;
+  if (!target || state.busy) return;
+  state.busy = true;
+  const controller = new AbortController();
+  state.controller = controller;
+  try {
+    let src = state.cache.get(target.key);
+    if (!src) {
+      const response = await fetch(target.url, { signal: controller.signal });
+      if (!response.ok) throw new Error('预览暂不可用');
+      src = URL.createObjectURL(await response.blob());
+      state.cache.set(target.key, src);
+      while (state.cache.size > 60) {
+        const key = state.cache.keys().next().value;
+        URL.revokeObjectURL(state.cache.get(key));
+        state.cache.delete(key);
+      }
+    }
+    if (state.wanted && state.wanted.key === target.key) {
+      const img = $('#pPreviewImage');
+      img.src = src;
+      img.hidden = false;
+      $('#pPreviewStatus').hidden = true;
+    }
+  } catch (e) {
+    if (state.wanted && state.wanted.key === target.key && e.name !== 'AbortError') $('#pPreviewStatus').textContent = '预览暂不可用';
+  } finally {
+    state.busy = false;
+    if (state.controller === controller) state.controller = null;
+    if (state.wanted && state.wanted.key !== target.key) fetchVideoPreview();
+  }
+}
+function showVideoPreview(time, x) {
+  if (!Player.data || Player.data.audio || !Player.duration) return;
+  const tip = $('#pbarTip');
+  const bar = $('#pbar');
+  tip.hidden = false;
+  const half = Math.min(tip.offsetWidth / 2 + 2, bar.clientWidth / 2);
+  tip.style.left = `${Math.max(half, Math.min(bar.clientWidth - half, x))}px`;
+  $('#pPreviewTime').textContent = fmtTime(time);
+  const timestamp = Math.floor(Math.min(time, Math.max(0, Player.duration - 1)) / 2) * 2;
+  const key = `${Player.itemId}:${Player.epIndex}:${timestamp}`;
+  if (videoPreviewState.wanted?.key === key) return;
+  const url = `/api/video-preview?item=${encodeURIComponent(Player.itemId)}&ep=${Player.epIndex}&time=${timestamp}`;
+  videoPreviewState.wanted = { key, url };
+  const cached = videoPreviewState.cache.get(key);
+  $('#pPreviewImage').hidden = !cached;
+  if (cached) $('#pPreviewImage').src = cached;
+  $('#pPreviewStatus').hidden = !!cached;
+  $('#pPreviewStatus').textContent = '正在加载预览…';
+  clearTimeout(videoPreviewState.timer);
+  if (!cached) videoPreviewState.timer = setTimeout(fetchVideoPreview, 100);
 }
 
 function absoluteTime() {
@@ -1341,28 +1605,15 @@ function seekTo(sec) {
 
 function switchQuality(q) {
   if (!Player.data || q === Player.quality) return;
-  if (q === 'auto' && Player.data.vcodec === 'hevc' && !canPlayHevc() && Player.data.mode !== 'transcode') {
-    toast('当前浏览器无法直接播放 H.265，请选择具体清晰度');
-    return;
-  }
   const cur = absoluteTime();
   Player.quality = q;
   renderQualityMenu();
-  refreshNote();
   const wasPlaying = !playerEls().video.paused;
   showLoading(true);
   applySrc(cur);
   if (wasPlaying) playerEls().video.play().catch(() => {});
   flash(q === 'auto' ? '原画' : qualityLabel(q));
   scheduleHide();
-}
-
-function refreshNote() {
-  if (Player.data) {
-    const els = playerEls();
-    els.note.textContent = modeNote(Player.data);
-    els.note.hidden = false;
-  }
 }
 
 function setSpeed(rate) {
@@ -1431,12 +1682,22 @@ function applyFit(mode) {
 function renderSettingsMenu() {
   const els = playerEls();
   els.settingsMenu.innerHTML = [
-    `<div class="pm-row" data-set="autoNext"><span class="pm-label">自动连播</span><div class="pm-switch ${Player.autoNext ? 'on' : ''}"></div></div>`,
-    `<div class="pm-row" data-set="loop"><span class="pm-label">循环播放</span><div class="pm-switch ${els.video.loop ? 'on' : ''}"></div></div>`,
+    `<div class="pm-track-head">音效</div>`,
+    `<div class="pv-effect-grid">${Object.entries(window.VideoEffects?.presets || {}).map(([id, preset]) => `<button data-video-effect="${id}" class="pv-effect ${window.VideoEffects.selected === id ? 'on' : ''}" aria-pressed="${window.VideoEffects.selected === id}" title="${esc(preset.description)}"><strong>${esc(preset.name)}</strong><span>${esc(preset.description)}</span></button>`).join('')}</div>`,
+    `<div class="pm-row" data-set="autoNext"><span class="pm-label">自动连播</span><button class="pm-switch ${Player.autoNext ? 'on' : ''}" role="switch" aria-checked="${Player.autoNext}" aria-label="自动连播"></button></div>`,
+    `<div class="pm-row" data-set="loop"><span class="pm-label">循环播放</span><button class="pm-switch ${els.video.loop ? 'on' : ''}" role="switch" aria-checked="${els.video.loop}" aria-label="循环播放"></button></div>`,
     `<div class="pm-row" data-set="fit"><span class="pm-label">画面比例</span><div class="pm-seg">` +
       `<button data-set="fit" data-val="contain" class="${Player.fit === 'contain' ? 'on' : ''}">适应</button>` +
       `<button data-set="fit" data-val="fill" class="${Player.fit === 'fill' ? 'on' : ''}">铺满</button>` +
-    `</div></div>`
+    `</div></div>`,
+    `<div class="pm-track-head">音轨</div>`,
+    ...(Player.data?.audioTracks || []).map(t => `<button class="pm-track ${Player.audioTrack === t.index ? 'on' : ''}" data-media-kind="audio" data-media-track="${t.index}" aria-pressed="${Player.audioTrack === t.index}">${esc(trackName(t, '音轨'))}${t.default ? ' · 默认' : ''}</button>`),
+    !(Player.data?.audioTracks || []).length ? '<div class="pm-track-empty">暂无可切换音轨</div>' : '',
+    `<div class="pm-track-head">字幕</div>`,
+    `<button class="pm-track ${Player.subtitleTrack === 'off' ? 'on' : ''}" data-media-kind="subtitle" data-media-track="off" aria-pressed="${Player.subtitleTrack === 'off'}">关闭字幕</button>`,
+    ...(Player.data?.subtitleTracks || []).map(t => `<button class="pm-track ${Player.subtitleTrack === String(t.index) ? 'on' : ''}" data-media-kind="subtitle" data-media-track="${t.index}" aria-pressed="${Player.subtitleTrack === String(t.index)}">${esc(trackName(t, '字幕'))}</button>`),
+    Player.data?.subtitle ? `<button class="pm-track ${Player.subtitleTrack === 'external' ? 'on' : ''}" data-media-kind="subtitle" data-media-track="external">外挂字幕</button>` : '',
+    !(Player.data?.subtitleTracks || []).length && !Player.data?.subtitle ? '<div class="pm-track-empty">该视频没有可用字幕</div>' : ''
   ].join('');
 }
 
@@ -1478,6 +1739,7 @@ function closeMenus(except) {
   if (except !== 'quality') els.qualityMenu.hidden = true;
   if (except !== 'speed') els.speedMenu.hidden = true;
   if (except !== 'settings') els.settingsMenu.hidden = true;
+  ['quality', 'speed', 'settings'].forEach(name => $(`#${name}Btn`)?.setAttribute('aria-expanded', String(except === name)));
   if (!except) Player.menuOpen = null;
 }
 
@@ -1491,6 +1753,7 @@ function toggleMenu(name) {
   if (willOpen) {
     el.hidden = false;
     Player.menuOpen = name;
+    $(`#${name}Btn`)?.setAttribute('aria-expanded', 'true');
   }
   scheduleHide();
 }
@@ -1502,18 +1765,27 @@ function scheduleHide() {
   els.root.classList.add('show-ui');
   els.root.classList.remove('cursor-hide');
   Player.hideTimer = setTimeout(() => {
-    if (Player.dragging || Player.menuOpen) return; // 拖动进度 / 菜单展开时保持
+    if (Player.dragging || Player.menuOpen || els.root.querySelector('.pvol-wrap:hover, .pvol-wrap:focus-within, .pbar:hover, .pbar:focus-within')) return; // 拖动进度 / 菜单展开时保持
     hideControls();
   }, 2600);
 }
 
 /* 隐藏控制层与光标 */
 function hideControls() {
+  resetVideoPreview();
   const els = playerEls();
   els.root.classList.remove('show-ui');
   els.root.classList.add('cursor-hide');
   closeMenus();
 }
+
+function persistVideoSession() {
+  if (!Player.data || $('#player').hidden) return;
+  try {
+    localStorage.setItem('yy_video_session_v1', JSON.stringify({ itemId: Player.itemId, epIndex: Player.epIndex, position: absoluteTime(), audioTrack: Player.audioTrack, subtitleTrack: Player.subtitleTrack }));
+  } catch (e) {}
+}
+window.addEventListener('pagehide', persistVideoSession);
 
 function saveProgress(force = false) {
   if (!Player.data) return;
@@ -1535,12 +1807,14 @@ function saveProgress(force = false) {
 }
 
 function closePlayer() {
+  resetVideoPreview();
   const els = playerEls();
+  persistVideoSession();
   saveProgress(true);
+  if (location.hash === `#/play/${Player.itemId}/${Player.epIndex}`) history.replaceState(null, '', `#/item/${Player.itemId}`);
   els.video.pause();
-  els.video.removeAttribute('src');
-  els.video.load();
-  els.root.hidden = true;
+  ++videoLoadVersion;
+  if (videoPageOpen) animateVideoPage(false);
   els.root.classList.remove('show-ui', 'cursor-hide', 'is-theater');
   const stageEl = $('#ppStage');
   if (stageEl) stageEl.classList.remove('is-audio');
@@ -1550,6 +1824,7 @@ function closePlayer() {
   showBigPlay(false);
   const view = $('#view');
   if (view) view.hidden = false;
+  if (!AU.open) animateRouteView();
   // 从视频回来时，把没在放的那首歌收进迷你条，别让界面里彻底找不到它
   syncMiniBar();
   Player.data = null;
@@ -1566,12 +1841,26 @@ function bindPlayer() {
   const els = playerEls();
   const root = els.root;
 
+  root.querySelectorAll('.pmenu-wrap').forEach(wrap => {
+    const trigger = wrap.querySelector('[data-pact]');
+    const name = trigger.dataset.pact;
+    trigger.setAttribute('aria-haspopup', 'true');
+    trigger.setAttribute('aria-expanded', 'false');
+    const open = () => { if (Player.menuOpen !== name) toggleMenu(name); };
+    let leaveTimer;
+    wrap.addEventListener('pointerenter', e => { if (e.pointerType !== 'touch') { clearTimeout(leaveTimer); open(); } });
+    wrap.addEventListener('pointerleave', () => { leaveTimer = setTimeout(() => { if (!wrap.contains(document.activeElement) && Player.menuOpen === name) { closeMenus(); scheduleHide(); } }, 180); });
+    wrap.addEventListener('focusin', () => { clearTimeout(leaveTimer); open(); });
+    wrap.addEventListener('focusout', e => { if (!wrap.contains(e.relatedTarget) && Player.menuOpen === name) { closeMenus(); scheduleHide(); } });
+  });
+
   // 按钮图标已在 index.html 中以 Youku 风格内联 SVG 给出，这里只做动态状态切换
 
   /* ---- video 事件 ---- */
   els.video.addEventListener('timeupdate', () => {
     if (Player.dragging) return;
     updateBar(absoluteTime(), Player.duration || els.video.duration);
+    persistVideoSession();
     saveProgress();
   });
   els.video.addEventListener('progress', updateBuffer);
@@ -1612,6 +1901,8 @@ function bindPlayer() {
   els.video.addEventListener('volumechange', () => {
     const v = els.video;
     els.vol.value = Math.round((v.muted ? 0 : v.volume) * 100);
+    $('#pVolValue').textContent = `${els.vol.value}%`;
+    els.vol.style.setProperty('--volume', `${els.vol.value}%`);
     setIconD('pVolIcon', v.muted || v.volume === 0 ? VOL_MUTE : v.volume < 0.5 ? VOL_LOW : VOL_HIGH);
   });
   els.video.addEventListener('ended', () => {
@@ -1627,9 +1918,21 @@ function bindPlayer() {
   });
   els.video.addEventListener('error', () => {
     if (!els.video.currentSrc) return;
+    const d = Player.data;
+    const code = els.video.error && els.video.error.code;
+    if (d && !d.audio && (code === 3 || code === 4) && Player.recovery !== 'transcode') {
+      const position = absoluteTime();
+      Player.recovery = useDirect() ? 'remux' : 'transcode';
+      showLoading(true);
+      showBigPlay(false);
+      applySrc(position);
+      els.video.play().catch(() => { if (!els.video.error) showBigPlay(true); });
+      toast(Player.recovery === 'remux' ? '原文件播放失败，正在切换兼容封装' : '正在切换 H.264 兼容转码');
+      return;
+    }
     showLoading(false);
-    showBigPlay(false);
-    toast('播放中断，可尝试切换清晰度');
+    showBigPlay(true);
+    toast('播放失败，请检查 NAS 连接及 ffmpeg，或切换清晰度重试');
   });
   document.addEventListener('fullscreenchange', () => {
     setIconD('pFullIcon', document.fullscreenElement ? FULL_EXIT_D : FULL_D);
@@ -1649,6 +1952,10 @@ function bindPlayer() {
 
   /* ---- 控制条按钮 ---- */
   root.addEventListener('click', (e) => {
+    const effectButton = e.target.closest('[data-video-effect]');
+    if (effectButton) { window.VideoEffects?.select(effectButton.dataset.videoEffect); scheduleHide(); return; }
+    const trackButton = e.target.closest('[data-media-track]');
+    if (trackButton) { switchMediaTrack(trackButton.dataset.mediaKind, trackButton.dataset.mediaTrack); return; }
     const menuItem = e.target.closest('[data-q],[data-rate]');
     if (menuItem) {
       if (menuItem.dataset.q !== undefined) switchQuality(menuItem.dataset.q);
@@ -1702,13 +2009,22 @@ function bindPlayer() {
       if (Player.epIndex > 0) {
         loadEpisode(Player.itemId, Player.epIndex - 1, { keepQuality: true }).catch(() => {});
       }
-    }     else if (act === 'quality') toggleMenu('quality');
-    else if (act === 'speed') toggleMenu('speed');
-    else if (act === 'settings') toggleMenu('settings');
+    }     else if (act === 'quality') { if (Player.menuOpen !== 'quality' || !btn.matches(':hover')) toggleMenu('quality'); }
+    else if (act === 'speed') { if (Player.menuOpen !== 'speed' || !btn.matches(':hover')) toggleMenu('speed'); }
+    else if (act === 'settings') { if (Player.menuOpen !== 'settings' || !btn.matches(':hover')) toggleMenu('settings'); }
     else if (act === 'theater') toggleTheater();
     else if (act === 'mute') toggleMute();
     else if (act === 'full') toggleFull();
     else if (act === 'pip') togglePip();
+    else if (act === 'fetch-episode-titles') {
+      fetchEpisodeTitles(btn);
+    }
+    else if (act === 'epview') {
+      const listView = els.pepGrid.classList.toggle('list-view');
+      btn.querySelector('span').textContent = listView ? '宫格' : '列表';
+      btn.setAttribute('aria-pressed', String(listView));
+      try { localStorage.setItem('yy_episode_list', String(listView)); } catch (e) {}
+    }
     else if (act === 'moreeps') {
       const grid = els.pepGrid;
       const open = grid.classList.toggle('expanded');
@@ -1716,10 +2032,7 @@ function bindPlayer() {
     } else if (act === 'moresyn') {
       const open = els.synopsis.classList.toggle('expanded');
       btn.textContent = open ? '收起' : '展开';
-    } else if (act === 'fav') toast('已加入我的收藏');
-    else if (act === 'share') toast('已复制播放链接');
-    else if (act === 'download') toast('桌面客户端内可直接下载原片');
-    else if (act === 'report') toast('已记录反馈');
+    }
   });
 
   /* ---- 音量滑块 ---- */
@@ -1737,17 +2050,13 @@ function bindPlayer() {
   bar.addEventListener('pointermove', (e) => {
     const ratio = ratioOf(e);
     const t = ratio * durOf();
-    els.tip.hidden = false;
-    els.tip.style.left = `${Math.min(96, Math.max(4, ratio * 100))}%`;
-    els.tip.textContent = fmtTime(t);
+    showVideoPreview(t, ratio * bar.clientWidth);
     if (Player.dragging) {
       Player.dragValue = t;
       updateBar(t, durOf());
     }
   });
-  bar.addEventListener('pointerleave', () => {
-    els.tip.hidden = true;
-  });
+  bar.addEventListener('pointerleave', resetVideoPreview);
   bar.addEventListener('pointerdown', (e) => {
     if (!Player.data) return;
     e.preventDefault();
@@ -1937,10 +2246,10 @@ function musicSongRow(song, i) {
   const ext = String(song.ext || '').replace('.', '').toUpperCase();
   return `<button class="mtr${on ? ' on' : ''}" data-act="mplay" data-key="${esc(song.key)}" data-initial="${musicSongInitial(song)}">
     <span class="c-no">${i + 1}</span>
-    <span class="c-title"><b>${esc(song.title)}</b>${ext ? `<i class="fmt">${ext}</i>` : ''}</span>
+    <span class="c-title"><i class="meq song-playing" aria-label="正在播放" hidden><b></b><b></b><b></b><b></b></i><b>${esc(song.title)}</b>${ext ? `<i class="fmt">${ext}</i>` : ''}</span>
     <span class="c-artist">${esc(song.artist || '未知歌手')}</span>
     <span class="c-album">${esc(song.album || '单曲')}</span>
-    <span class="c-dur"><i class="meq song-playing" aria-label="正在播放" hidden><b></b><b></b><b></b><b></b></i><span class="song-duration" data-k="${esc(song.key)}">${fmtDur(song.duration)}</span></span>
+    <span class="c-dur"><span class="song-duration" data-k="${esc(song.key)}">${fmtDur(song.duration)}</span></span>
   </button>`;
 }
 
@@ -2187,7 +2496,7 @@ function persistAudioSession(force = false) {
   } catch (e) { /* 存储不可用时仍可正常播放 */ }
 }
 
-async function restoreAudioSession() {
+async function restoreAudioSession(opts = {}) {
   if (AU.data || !$('#player').hidden) return;
   let saved;
   try { saved = JSON.parse(localStorage.getItem(AUDIO_SESSION_KEY) || 'null'); } catch (e) { return; }
@@ -2206,9 +2515,9 @@ async function restoreAudioSession() {
     el.muted = !!saved.muted;
     el.defaultPlaybackRate = el.playbackRate = AU_RATES.includes(saved.rate) ? saved.rate : 1;
     syncAuMode();
-    await loadAuTrack(AU.index, { autoplay: !!saved.playing, resume: Math.max(0, Number(saved.position) || 0) });
+    await loadAuTrack(AU.index, { autoplay: !!opts.playPage || !!saved.playing, resume: Math.max(0, Number(saved.position) || 0) });
     if (!AU.data) { AU.queue = []; AU.index = -1; return; }
-    if (saved.open) showAudioPage(); else syncMiniBar();
+    if (opts.playPage || saved.open) showAudioPage(); else syncMiniBar();
     if (state.route.name === 'list' && state.route.type === 'music' && MUSIC.data) { paintMusic(); scrollToCurrentMusic(); }
   } finally { AU.restoring = false; }
 }
@@ -2233,6 +2542,7 @@ function auIndexInfo() {
 }
 
 function auTrackArt(t, d) {
+  if (t && t.art) return t.art;
   if (d && d.poster) return d.poster;
   return `/api/cover?item=${encodeURIComponent((t && t.id) || '')}&ep=${(t && t.ep) || 0}&fallback=0`;
 }
@@ -2267,18 +2577,21 @@ function queueFromPlaylist(d) {
 
 /** 视频还是音频？拿媒体库缓存判断，缓存里没有才回退问服务端 */
 async function openPlayback(itemId, epIndex = 0) {
+  const navigationVersion = routeVersion;
   const it = allItems().find((i) => i.id === itemId);
   if (it) return it.type === 'music' ? openAudio(itemId, epIndex) : openPlayer(itemId, epIndex);
   try {
     const d = await api(`/api/play?item=${encodeURIComponent(itemId)}&ep=${epIndex}`);
+    if (navigationVersion !== routeVersion) return;
     if (d && d.audio) return openAudio(itemId, epIndex, d);
   } catch (e) {
     /* 让视频播放器去报错 */
   }
-  return openPlayer(itemId, epIndex);
+  if (navigationVersion === routeVersion) return openPlayer(itemId, epIndex);
 }
 
 async function openAudio(itemId, epIndex = 0, preloaded = null, opts = {}) {
+  const navigationVersion = routeVersion;
   let d = preloaded;
   if (!d) {
     try {
@@ -2288,6 +2601,7 @@ async function openAudio(itemId, epIndex = 0, preloaded = null, opts = {}) {
       return;
     }
   }
+  if (navigationVersion !== routeVersion) return;
   if (!d.playable) {
     toast('该音频编码暂不支持播放，请安装 ffmpeg 后重试');
     return;
@@ -2308,6 +2622,7 @@ async function openAudio(itemId, epIndex = 0, preloaded = null, opts = {}) {
   }
 
   await loadAuTrack(AU.index, { autoplay: true, data: d });
+  if (navigationVersion !== routeVersion) return;
   if (state.route.name === 'list' && state.route.type === 'music') hideAudioPage();
   else showAudioPage();
 }
@@ -2370,27 +2685,75 @@ async function loadAuTrack(i, opts = {}) {
   }
 }
 
-function showAudioPage() {
+// 用同一个可中断动画衔接展开/收起，快速反向操作从当前画面继续。
+let audioPageMotion = null;
+function animateAudioPage(open) {
   const page = $('#audioPage');
   if (!page) return;
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const wasHidden = page.hidden;
+  const current = !wasHidden && audioPageMotion ? getComputedStyle(page) : null;
+  const from = current
+    ? { transform: current.transform, opacity: current.opacity }
+    : { transform: open && !reduced ? 'translateY(100%)' : 'translateY(0)', opacity: open && reduced ? 0 : 1 };
+  if (audioPageMotion) audioPageMotion.cancel();
+  audioPageMotion = null;
   page.hidden = false;
+  page.inert = !open;
+  const finish = () => {
+    page.hidden = !open;
+    page.inert = !open;
+    $('#view').hidden = open || videoPageOpen;
+    page.classList.remove('is-transitioning');
+  };
+  if (!page.animate || (!open && wasHidden)) { finish(); return; }
+  page.classList.add('is-transitioning');
+  const animation = page.animate([
+    from,
+    { transform: !open && !reduced ? 'translateY(100%)' : 'translateY(0)', opacity: !open && reduced ? 0 : 1 }
+  ], {
+    duration: reduced ? 100 : open ? 420 : 280,
+    easing: open ? 'cubic-bezier(0.16, 1, 0.3, 1)' : 'cubic-bezier(0.4, 0, 0.8, 0.4)',
+    fill: 'both'
+  });
+  audioPageMotion = animation;
+  animation.onfinish = () => {
+    if (audioPageMotion !== animation) return;
+    finish();
+    audioPageMotion = null;
+    animation.cancel();
+  };
+}
+
+function showAudioPage() {
+  const page = $('#audioPage');
+  if (!page || (AU.open && !page.hidden)) return;
   closeMiniVolume();
   $('#miniBar').hidden = true;
   document.body.classList.remove('has-mini');
-  $('#view').hidden = true;
+  // 动画完成前保留底层页面，面板从迷你播放器所在的底部展开。
+  $('#view').hidden = false;
   AU.open = true;
+  const current = auIndexInfo();
+  if (current) history.replaceState(null, '', `#/play/${current.id}/${current.ep || 0}`);
   setLyricView(true);
   persistAudioSession(true);
   renderAuQueue();
+  animateAudioPage(true);
 }
 
 function hideAudioPage() {
-  const page = $('#audioPage');
-  if (page) page.hidden = true;
+  const wasOpen = AU.open;
   AU.open = false;
+  const current = auIndexInfo();
+  if (current && location.hash === `#/play/${current.id}/${current.ep || 0}` && $('#player').hidden) history.replaceState(null, '', '#/list/music');
   persistAudioSession(true);
   $('#view').hidden = false;
   syncMiniBar();
+  $('#apQueue').hidden = true;
+  $('#apQueueBtn').setAttribute('aria-expanded', 'false');
+  closeMiniVolume();
+  if (wasOpen) animateAudioPage(false);
 }
 
 function stopAudio() {
@@ -2500,11 +2863,96 @@ function renderMiniQueue() {
   $('#mbQueueList').innerHTML = matches.length ? matches.map(({ track: t, index: i }) => `<button class="mb-queue-item${i === AU.index ? ' on' : ''}" data-aact="mini-track" data-i="${i}" aria-current="${i === AU.index}"><span>${i + 1}</span><b>${esc(t.title || '未知歌曲')}</b><small>${esc(t.artist || '未知歌手')}</small></button>`).join('') : `<p class="queue-empty" role="status">${AU.queue.length ? '没有匹配的歌曲，试试其他关键词' : '选择歌曲后显示播放队列'}</p>`;
 }
 
+async function editCurrentSong() {
+  const track = auIndexInfo();
+  if (!track) return;
+  const d = AU.data || {};
+  let cover = '';
+  openModal(`<div class="modal-head"><h3>编辑歌曲信息</h3><button class="close" data-act="close-modal" aria-label="关闭">${icon('close', 16)}</button></div>
+    <form id="songEditForm"><div class="modal-body song-editor">
+      <label>歌名<input name="title" required maxlength="200" value="${esc(d.episodeTitle || track.title || '')}"></label>
+      <div class="song-match-tools"><button type="button" class="btn-line" id="songMatchBtn">${icon('search', 15)}在线匹配</button><span>按歌名查找歌手、专辑和封面</span></div>
+      <div id="songMatchResults" class="song-match-results" aria-live="polite" hidden></div>
+      <label>歌手<input name="artist" maxlength="200" value="${esc(d.episodeArtist || track.artist || '')}" placeholder="填写歌手名"></label>
+      <label>专辑<input name="album" maxlength="200" value="${esc(track.album || '')}" placeholder="填写专辑名"></label>
+      <img id="songCoverPreview" src="${esc(auTrackArt(track, d))}" alt="歌曲封面预览">
+      <p class="field-hint" id="songEditStatus" role="status">通过在线匹配更新封面，点击保存后生效。</p>
+    </div><div class="modal-foot"><div class="right"><button type="button" class="btn-line sm" data-act="close-modal">取消</button><button class="btn-solid" type="submit">保存</button></div></div></form>`);
+  const form = $('#songEditForm');
+  const matchButton = $('#songMatchBtn');
+  const matchResults = $('#songMatchResults');
+  let matches = [];
+  let matchRequest = 0;
+  matchButton.onclick = async () => {
+    const title = form.elements.title.value.trim();
+    if (!title) { form.elements.title.reportValidity(); return; }
+    const request = ++matchRequest;
+    matchButton.disabled = true;
+    matchResults.hidden = false;
+    matchResults.textContent = '正在在线匹配…';
+    matchResults.setAttribute('aria-busy', 'true');
+    try {
+      const result = await api('/api/music/match', { method: 'POST', body: JSON.stringify({ title, artist: form.elements.artist.value, duration: d.duration || 0 }) });
+      if (!form.isConnected || request !== matchRequest) return;
+      matches = result.results || [];
+      matchResults.innerHTML = matches.length ? `<p>选择正确版本，将信息填入下方表单</p>${matches.map((song, index) => `<button type="button" class="song-match-item" data-song-match="${index}"><span><b>${esc(song.title)}</b><small>${esc(song.artist || '未知歌手')} · ${esc(song.album || '未知专辑')}</small></span><small>${song.source === 'qq' ? 'QQ 音乐' : '网易云音乐'}</small></button>`).join('')}` : '<p>没有找到匹配歌曲，可调整歌名或补充歌手后重试，也可以手动填写。</p>';
+    } catch (error) {
+      if (form.isConnected) matchResults.textContent = `匹配失败：${error.message}，请重试或手动填写。`;
+    } finally {
+      matchButton.disabled = false;
+      matchResults.setAttribute('aria-busy', 'false');
+    }
+  };
+  matchResults.onclick = event => {
+    const button = event.target.closest('[data-song-match]');
+    if (!button) return;
+    const song = matches[Number(button.dataset.songMatch)];
+    if (!song) return;
+    form.elements.title.value = song.title;
+    form.elements.artist.value = song.artist;
+    form.elements.album.value = song.album;
+    if (song.cover) {
+      cover = song.cover;
+      preview.src = proxyURL(song.cover);
+    }
+    for (const item of matchResults.querySelectorAll('[data-song-match]')) item.setAttribute('aria-pressed', String(item === button));
+    $('#songEditStatus').textContent = `已填入${song.source === 'qq' ? 'QQ 音乐' : '网易云音乐'}的歌曲信息，点击保存后生效${song.cover ? '' : '；此版本暂无封面，保留当前封面'}。`;
+  };
+  const preview = $('#songCoverPreview');
+  preview.onerror = () => { preview.hidden = true; };
+  preview.onload = () => { preview.hidden = false; };
+  form.onsubmit = async event => {
+    event.preventDefault();
+    const button = form.querySelector('[type="submit"]');
+    button.disabled = true;
+    try {
+      // 没有选新图时保留服务端已保存的封面。
+      const existing = await api(`/api/music/metadata?item=${encodeURIComponent(track.id)}&ep=${track.ep || 0}`);
+      const result = await api('/api/music/metadata', { method: 'POST', body: JSON.stringify({ itemId: track.id, ep: track.ep || 0, title: form.elements.title.value, artist: form.elements.artist.value, album: form.elements.album.value, cover: cover || existing.cover || '' }) });
+      const song = { ...result.song, art: `${result.song.art}&v=${Date.now()}` };
+      for (const t of AU.queue) if (t.id === track.id && t.ep === track.ep) Object.assign(t, song);
+      if (MUSIC.data) MUSIC.data = null;
+      if (auIndexInfo()?.key === track.key && AU.data) {
+        AU.data.song = song;
+        AU.data.episodeTitle = song.title;
+        AU.data.episodeArtist = song.artist;
+        paintAudioPage(AU.data, auIndexInfo());
+        syncMediaSession(AU.data, auIndexInfo());
+      }
+      persistAudioSession(true);
+      closeModal();
+      toast('歌曲信息已保存');
+    } catch (error) { $('#songEditStatus').textContent = error.message || '保存失败，请重试'; }
+    finally { button.disabled = false; }
+  };
+  form.elements.title.focus();
+}
+
 function paintAudioPage(d, t) {
   if (!d) return;
-  const title = d.episodeTitle || t.title || d.title;
-  const artist = d.episodeArtist || t.artist || d.artist || '';
-  const album = d.kind === 'album' ? d.title : t.album || '';
+  const title = d.song?.title ?? (d.episodeTitle || t.title || d.title);
+  const artist = d.song?.artist ?? (d.episodeArtist || t.artist || d.artist || '');
+  const album = d.song?.album ?? (d.kind === 'album' ? d.title : t.album || '');
   $('#apTitle').textContent = title;
   $('#apSub').textContent = [artist, album].filter(Boolean).join(' · ') || '未知歌手';
   $('#apLyricTitle').textContent = title;
@@ -2519,6 +2967,7 @@ function paintAudioPage(d, t) {
   if (d.mode !== 'direct') chips.push(`<span class="ap-chip warn">实时转码 MP3</span>`);
   $('#apChips').innerHTML = chips.join('');
 
+  if (d.song) Object.assign(t, d.song, { art: t.art && t.art.includes('&v=') ? t.art : d.song.art });
   const art = auTrackArt(t, d);
   const img = $('#apCover');
   const ph = $('#apArtPh');
@@ -2920,8 +3369,8 @@ function renderAuQueue() {
 
 function syncMediaSession(d, t) {
   if (!('mediaSession' in navigator)) return;
-  const title = d.episodeTitle || t.title || d.title;
-  const artist = d.episodeArtist || t.artist || d.artist || '';
+  const title = d.song?.title ?? (d.episodeTitle || t.title || d.title);
+  const artist = d.song?.artist ?? (d.episodeArtist || t.artist || d.artist || '');
   const art = auTrackArt(t, d);
   try {
     navigator.mediaSession.metadata = new MediaMetadata({
@@ -3235,6 +3684,7 @@ function bindAudio() {
       syncMiniBar();
       return;
     }
+    if (act === 'edit-song') return editCurrentSong();
     if (act === 'info') {
       const t = auIndexInfo();
       if (!t) return;
@@ -3268,7 +3718,7 @@ function bindAudio() {
 
   // 音频页键盘
   document.addEventListener('keydown', (e) => {
-    if (!AU.open) return;
+    if (!AU.open || !$('#modalLayer').hidden) return;
     // Esc 优先处理：歌词搜索框里按 Esc 也要能收起来
     if (e.key === 'Escape') {
       const row = $('#lyrSearchRow');
@@ -3478,8 +3928,7 @@ function renderLogin() {
       renderSidebar();
       await loadLibrary();
       startScanPoll();
-      go('#/');
-      await restoreAudioSession();
+      await boot();
     } catch (err) {
       errBox.innerHTML = `<div class="login-err">${esc(err.message)}</div>`;
       if (/两步验证|验证码/.test(err.message)) $('#otpField').hidden = false;
@@ -3502,6 +3951,13 @@ function settingsHTML() {
   ];
   return `<div class="settings">
     <h1>设置</h1>
+    <div class="panel appearance-panel">
+      <div class="panel-head"><div class="panel-title">外观</div><div class="panel-desc">强调色随亮色与暗色主题自动适配，选择后立即生效</div></div>
+      <div class="accent-heading"><span id="accentLabel">强调色</span><span id="accentName" aria-live="polite">${(ACCENT_COLORS.find(([id]) => id === document.documentElement.dataset.accent) || ACCENT_COLORS[0])[1]}</span></div>
+      <div class="accent-options" role="group" aria-labelledby="accentLabel">
+        ${ACCENT_COLORS.map(([id, name, swatch]) => `<button type="button" class="accent-swatch" data-act="accent" data-color="${id}" style="--swatch: ${swatch}" aria-label="${name}" title="${name}" aria-pressed="${document.documentElement.dataset.accent === id}"><svg viewBox="0 0 24 24" width="25" height="25" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg></button>`).join('')}
+      </div>
+    </div>
     <div class="panel">
       <div class="panel-head">
         <div class="panel-title">群晖服务器</div>
@@ -3584,6 +4040,7 @@ function openModal(html, cls = '') {
 }
 
 function closeModal() {
+  rematchController?.abort();
   const layer = $('#modalLayer');
   layer.hidden = true;
   layer.innerHTML = '';
@@ -3675,47 +4132,57 @@ function rematchHTML(item) {
     </div>
     <div class="modal-body">
       <div class="field">
-        <label>搜索片名</label>
-        <input id="rematchQuery" value="${esc(item.title)}" placeholder="输入片名后回车搜索" />
-        <div class="field-hint">同时搜索豆瓣 / Bangumi / TVmaze / 1905 电影网 / Jikan / TMDB，点选正确条目后封面与简介会立即更新。</div>
+        <label for="rematchQuery">搜索片名</label>
+        <div class="rematch-search"><input id="rematchQuery" value="${esc(item.title)}" placeholder="输入片名或粘贴百度百科词条链接" maxlength="200" /><button class="btn-line" data-act="rematch-search">搜索</button></div>
+        <div class="field-hint">各来源独立搜索，找到即可点选。支持粘贴百度百科词条链接。</div>
       </div>
-      <div id="rematchResults"><div class="folder-empty">输入片名后按回车搜索</div></div>
+      <div id="rematchStatus" class="rematch-count" role="status" aria-live="polite"></div><div id="rematchResults"><div class="folder-empty">输入片名后按回车搜索</div></div>
     </div>
     <div class="modal-foot"><div class="right"><button class="btn-line sm" data-act="close-modal">关闭</button></div></div>`;
 }
 
+let rematchController = null;
+const REMATCH_SOURCES = { douban: '豆瓣', tmdb: 'TMDB', tvmaze: 'TVmaze', bangumi: 'Bangumi', movie1905: '1905 电影网', jikan: 'Jikan', baike: '百度百科' };
 async function doRematchSearch() {
   const item = state.detail && state.detail.item;
-  if (!item) return;
-  const q = ($('#rematchQuery') || {}).value || item.title;
   const box = $('#rematchResults');
-  if (box) box.innerHTML = `<div class="folder-empty">搜索中…</div>`;
-  try {
-    const res = await api('/api/rematch/search', {
-      method: 'POST',
-      body: JSON.stringify({ itemId: item.id, query: q, type: item.kind === 'movie' ? 'movie' : 'tv' })
-    });
-    if (!res.results.length) {
-      box.innerHTML = `<div class="folder-empty">没有找到匹配条目</div>`;
-      return;
+  const status = $('#rematchStatus');
+  if (!item || !box || !status || box.dataset.applying) return;
+  const q = ($('#rematchQuery')?.value || '').trim();
+  if (!q) { $('#rematchQuery')?.focus(); return; }
+  rematchController?.abort();
+  const controller = rematchController = new AbortController();
+  const sources = /^https?:\/\//i.test(q) ? ['baike'] : Object.keys(REMATCH_SOURCES).filter(p => (p !== 'tvmaze' || item.kind !== 'movie'));
+  const pending = new Set(sources);
+  const failed = [];
+  let count = 0;
+  box.innerHTML = '';
+  const updateStatus = () => {
+    status.textContent = `${count ? `已找到 ${count} 条，可直接选择。` : ''}${pending.size ? `正在搜索：${[...pending].map(p => REMATCH_SOURCES[p]).join('、')}` : '搜索完成'}${failed.length ? ` · ${failed.join('、')}未能返回，可重新搜索` : ''}`;
+    if (!pending.size && !count) box.innerHTML = `<div class="folder-empty">${failed.length ? '部分来源暂不可用，请重试或更换片名。' : '没有找到匹配条目，试试其他片名或去掉年份。'}</div>`;
+  };
+  updateStatus();
+  await Promise.all(sources.map(async provider => {
+    try {
+      const res = await api('/api/rematch/search', {
+        method: 'POST', signal: controller.signal,
+        body: JSON.stringify({ itemId: item.id, query: q, type: item.kind === 'movie' ? 'movie' : 'tv', provider })
+      });
+      if (controller.signal.aborted || !box.isConnected) return;
+      count += res.results.length;
+      box.insertAdjacentHTML('beforeend', res.results.map(r => `<button type="button" class="result-item" data-act="apply-match" data-id="${esc(r.id)}" data-type="${esc(r.type)}" data-provider="${esc(r.provider)}">
+        <img loading="lazy" src="${esc(r.provider === 'baike' ? proxyURL(r.poster) : r.poster || '')}" alt="" data-ph="/api/placeholder?t=${encodeURIComponent(r.title)}&s=${hashCode(r.id)}" />
+        <span class="r-info"><span class="r-title">${esc(r.title)}${r.rating ? `<span class="r-score">${Number(r.rating).toFixed(1)}</span>` : ''}</span>
+        <span class="r-sub"><span class="src-tag ${esc(r.provider)}">${esc(REMATCH_SOURCES[r.provider] || r.provider)}</span> ${esc(r.year || '年份未知')} · ${r.type === 'tv' ? '剧集' : '电影'}</span>
+        <span class="r-desc">${esc(r.subtitle || '')}</span></span>
+      </button>`).join(''));
+    } catch (e) {
+      if (!controller.signal.aborted) failed.push(provider === 'baike' ? `${REMATCH_SOURCES[provider]}：${e.message}` : REMATCH_SOURCES[provider]);
+    } finally {
+      pending.delete(provider);
+      if (!controller.signal.aborted && box.isConnected) updateStatus();
     }
-    const SOURCE_LABEL = { douban: '豆瓣', tmdb: 'TMDB', tvmaze: 'TVmaze', bangumi: 'Bangumi', movie1905: '1905 电影网', jikan: 'Jikan' };
-    box.innerHTML = `<div class="rematch-count">共 ${res.results.length} 条结果 · 来自 ${[...new Set(res.results.map((r) => r.provider))].map((p) => SOURCE_LABEL[p] || p).join(' + ')}</div>`
-      + res.results
-      .map(
-        (r) => `<div class="result-item" data-act="apply-match" data-id="${r.id}" data-type="${r.type}" data-provider="${esc(r.provider || 'douban')}">
-          <img src="${esc(r.poster || '')}" alt="" data-ph="/api/placeholder?t=${encodeURIComponent(r.title)}&s=${hashCode(r.id)}" />
-          <div style="min-width:0">
-            <div class="r-title">${esc(r.title)}${r.rating ? `<span class="r-score">${r.rating.toFixed(1)}</span>` : ''}</div>
-            <div class="r-sub"><span class="src-tag ${esc(r.provider || 'douban')}">${SOURCE_LABEL[r.provider] || r.provider}</span> ${r.year || ''} ${r.type === 'tv' ? '· 剧集' : '· 电影'} ${r.episodes ? '· ' + r.episodes + ' 集' : ''}</div>
-            <div class="r-desc">${esc(r.subtitle || '')}</div>
-          </div>
-        </div>`
-      )
-      .join('');
-  } catch (e) {
-    box.innerHTML = `<div class="folder-empty">${esc(e.message)}</div>`;
-  }
+  }));
 }
 
 /* -------------------------------- 全局事件 -------------------------------- */
@@ -3723,6 +4190,7 @@ async function onClick(e) {
   const el = e.target.closest('[data-act]');
   if (!el) return;
   const act = el.dataset.act;
+  if (act === 'accent') { applyAccent(el.dataset.color); return; }
 
   if (act === 'nav') {
     const id = el.dataset.id;
@@ -3838,8 +4306,10 @@ async function onClick(e) {
       const r = await api('/api/scan', { method: 'POST', body: JSON.stringify(sourceId ? { sourceId } : {}) });
       if (!r.ok) { toast(r.reason || '扫描失败'); return; }
       state.wasScanning = true;
-      state.boot = await api('/api/state');
+      state.taskStatus = { ...(state.taskStatus || {}), scanning: true };
+      syncScanButtons();
       startScanPoll();
+      state.boot = await api('/api/state');
     } catch (err) {
       toast(err.message);
     }
@@ -3936,6 +4406,7 @@ async function onClick(e) {
     }
     return;
   }
+  if (act === 'rematch-search') { doRematchSearch(); return; }
   if (act === 'rematch') {
     openModal(rematchHTML(state.detail.item), 'sm');
     setTimeout(doRematchSearch, 60);
@@ -3943,6 +4414,12 @@ async function onClick(e) {
   }
   if (act === 'apply-match') {
     const item = state.detail.item;
+    if (el.disabled || $('#rematchResults')?.dataset.applying) return;
+    const resultsBox = $('#rematchResults');
+    rematchController?.abort();
+    resultsBox.dataset.applying = 'true';
+    resultsBox.querySelectorAll('button').forEach(button => { button.disabled = true; });
+    $('#rematchStatus').textContent = `正在应用「${el.querySelector('.r-title').textContent}」的影片资料…`;
     try {
       await api('/api/rematch/apply', {
         method: 'POST',
@@ -3958,6 +4435,11 @@ async function onClick(e) {
       state.lib = await api('/api/library');
       renderDetail(item.id);
     } catch (err) {
+      if (resultsBox.isConnected) {
+        delete resultsBox.dataset.applying;
+        resultsBox.querySelectorAll('button').forEach(button => { button.disabled = false; });
+        $('#rematchStatus').textContent = '应用失败，请重试或选择其他来源';
+      }
       toast(err.message);
     }
     return;
@@ -4092,7 +4574,18 @@ function setTaskProgressVisible(visible) {
   if (toggle) toggle.checked = visible;
 }
 
+function syncScanButtons(status = state.taskStatus || state.boot || {}) {
+  const busy = !!(status.scanning || status.enriching);
+  document.querySelectorAll('[data-act="scan"], [data-act="scan-source"], [data-act="match-all"]').forEach(btn => {
+    btn.disabled = busy;
+    const scanningButton = btn.dataset.act !== 'match-all';
+    btn.classList.toggle('is-scanning', scanningButton && busy);
+    if (scanningButton) btn.setAttribute('aria-busy', String(busy));
+  });
+}
+
 function renderTaskProgress(status = state.taskStatus || state.boot || {}) {
+  syncScanButtons(status);
   const box = $('#libraryTaskProgress');
   if (!box) return;
   const busy = status.scanning || status.enriching;
@@ -4107,9 +4600,6 @@ function renderTaskProgress(status = state.taskStatus || state.boot || {}) {
       return `<div class="library-task-row"><div class="library-task-label"><span>${esc(label)}${p.estimated ? '（估算）' : ''}</span><strong>${percent}%</strong></div><progress max="100" value="${percent}" aria-label="${esc(label)}${p.estimated ? '，估算进度' : ''}">${percent}%</progress><div class="library-task-detail" role="status">${esc(p.error ? msg : p.stage)}${!p.error && p.total ? ` · ${p.completed}/${p.total}${p.estimated ? ' 个已发现目录' : ''}` : ''}</div></div>`;
     }).join('');
   }
-  document.querySelectorAll('[data-act="scan"], [data-act="scan-source"], [data-act="match-all"]').forEach(btn => {
-    btn.disabled = !!busy;
-  });
 }
 
 /* -------------------------------- 扫描轮询 -------------------------------- */
@@ -4198,8 +4688,7 @@ async function waitAutoLogin() {
       renderTopbar();
       renderSidebar();
       await loadLibrary();
-      go('#/');
-      await restoreAudioSession();
+      await boot();
       return;
     }
   } catch (e) {
@@ -4229,16 +4718,20 @@ async function boot() {
     return;
   }
   await loadLibrary();
-  // 刷新音乐播放页时使用会话恢复，避免路由再次从零播放同一首歌。
+  let restoredPlayPage = false;
   try {
     const saved = JSON.parse(localStorage.getItem(AUDIO_SESSION_KEY) || 'null');
     const track = saved && saved.queue && saved.queue[saved.index];
     if (track && location.hash === `#/play/${track.id}/${track.ep || 0}` && allItems().some(item => item.id === track.id && item.type === 'music')) {
-      history.replaceState(null, '', '#/list/music');
+      state.route = { name: 'item', id: track.id };
+      await restoreAudioSession({ playPage: true });
+      restoredPlayPage = !!AU.data;
     }
   } catch (e) {}
-  route();
-  if (!location.hash.startsWith('#/play/')) await restoreAudioSession();
+  if (!restoredPlayPage) {
+    route();
+    if (!location.hash.startsWith('#/play/')) await restoreAudioSession();
+  }
   if (state.boot.scanning) startScanPoll();
   if (state.boot.enriching) startScanPoll();
 }

@@ -43,10 +43,10 @@ function matchingContext(matchItem) {
   } });
   const cache = new Map();
   const context = { S, progress, matchProgress, setTimeout: fn => { fn(); }, persistLibrary() {},
-    metadata: { getCached: id => cache.get(id), matchItem: item => matchItem(item, cache), getCachedSeason() {} } };
+    metadata: { hasKey: () => false, getCached: id => cache.get(id), matchItem: item => matchItem(item, cache), getCachedSeason() {} } };
   vm.createContext(context);
   const source = fs.readFileSync(require.resolve('../server'), 'utf8');
-  vm.runInContext(source.slice(source.indexOf('async function enrichAll('), source.indexOf('async function runScan(')), context);
+  vm.runInContext(source.slice(source.indexOf('async function enrichEpisodeTitles('), source.indexOf('async function runScan(')), context);
   return { context, snapshots, values };
 }
 test('重试阶段仍保持运行状态，最终 100%，未匹配数量如实显示', async () => {
@@ -86,4 +86,24 @@ test('扫描后台启动后即可读取进度，完成时平滑交接给匹配',
   assert.equal(S.scanProgress.percent, 100);
   assert.equal(S.scanning, false);
   assert.equal(S.enriching, true);
+});
+
+
+test('整库匹配获取分集标题，单剧失败不阻断队列，电影与音乐跳过', async () => {
+  const { context, values } = matchingContext((item, cache) => cache.set(item.id, {}));
+  const calls = [];
+  context.metadata.hasKey = () => true;
+  context.metadata.getEpisodeTitles = async (item, options) => {
+    calls.push([item.id, options.force]);
+    if (item.id === 'first') throw new Error('网络异常');
+  };
+  await context.enrichAll([
+    { id: 'first', type: 'tv', episodes: [{ index: 0 }] },
+    { id: 'second', type: 'tv', episodes: [{ index: 0 }] },
+    { id: 'movie', type: 'movie', episodes: [{ index: 0 }] },
+    { id: 'song', type: 'music', episodes: [{ index: 0 }] }
+  ], { force: true });
+  assert.deepEqual(calls, [['first', true], ['second', true]]);
+  assert.equal(values.enrichProgress.percent, 100);
+  assert.equal(values.enriching, false);
 });

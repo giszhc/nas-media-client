@@ -797,13 +797,7 @@ img { -webkit-user-drag: none; }
 .pp-bigplay:hover { background: rgba(0,0,0,.72); transform: translate(-50%,-50%) scale(1.04); }
 .pp-bigplay[hidden] { display: none; }
 
-.pp-badge {
-  position: absolute; top: 10px; right: 12px; z-index: 5;
-  padding: 3px 8px; border-radius: 3px;
-  background: rgba(0,0,0,.5); color: #d7d7de; font-size: 11.5px;
-  backdrop-filter: blur(4px); pointer-events: none;
-}
-.pp-badge[hidden] { display: none; }
+
 
 .pp-controls {
   position: absolute; left: 0; right: 0; bottom: 0; z-index: 6;
@@ -2346,3 +2340,45 @@ body.has-mini #main { padding-bottom: 140px; }
 @media (max-width: 900px) {
   .mini-bar > .mb-txt { flex: 1 1 100px; max-width: none; }
 }
+
+/* 影片匹配：结果逐来源追加，保持已出现条目的位置。 */
+.rematch-search { display: flex; gap: 10px; }
+.rematch-search input { flex: 1; min-width: 0; }
+.rematch-search button { flex-shrink: 0; }
+#rematchResults { max-height: 45vh; overflow-y: auto; }
+#rematchResults .result-item { width: 100%; text-align: left; color: var(--ink); background: transparent; font: inherit; }
+#rematchResults .result-item:hover { background: var(--soft-2); }
+#rematchResults .result-item:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+#rematchResults .result-item:disabled { opacity: .6; cursor: wait; }
+#rematchResults .r-info { min-width: 0; }
+
+/* 当前片名跟随播放器控制层。 */
+.pp-playing-title { position: absolute; top: 22px; right: 24px; left: 24px; text-align: left; color: #fff; font-size: clamp(15px, 1.6vw, 24px); font-weight: 500; line-height: 1.5; text-shadow: 0 2px 6px #000; pointer-events: none; opacity: 0; transition: opacity .2s; overflow-wrap: anywhere; }
+.show-ui .pp-playing-title { opacity: 1; }
+.pp-ep-view { margin-left: auto; flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 5px 9px; border: 0; border-radius: 7px; background: var(--glass-control); color: var(--ink-2); font: inherit; font-size: 12px; line-height: 1; cursor: pointer; transition: background .15s, color .15s; }
+.pp-ep-view:hover { background: var(--glass-hover); color: var(--brand); }
+.pp-ep-view .ep-view-grid, .pp-ep-view[aria-pressed="true"] .ep-view-list { display: none; }
+.pp-ep-view[aria-pressed="true"] .ep-view-grid { display: block; }
+.pp-ep-view svg { flex-shrink: 0; }
+.pep-grid.list-view { grid-template-columns: minmax(0, 1fr); max-height: none; }
+.pep-grid.list-view.expanded { max-height: none; }
+.pep-grid.list-view .pep { display: flex; align-items: center; gap: 12px; height: auto; min-height: 48px; padding: 9px 12px; text-align: left; }
+.pep-grid.list-view .pep-num { flex-shrink: 0; min-width: 28px; }
+.pep-grid.list-view .pep-name { display: block; overflow-wrap: anywhere; line-height: 1.5; }
+.pmenu-wrap::after { content: ''; position: absolute; bottom: 100%; left: 0; right: 0; height: 18px; }
+.pp-ep-view:focus-visible, .pep:focus-visible { outline: 2px solid var(--yk-brand); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .pp-playing-title { transition: none; } }
+
+.pep-grid.list-view:not(.expanded) .pep:nth-child(n+19) { display: none; }
+
+/* 后台扫描及元数据匹配期间，刷新图标持续指示任务状态。 */
+[data-act="scan"].is-scanning > svg,
+[data-act="scan-source"].is-scanning > svg { animation: pp-spin 1s linear infinite; transform-origin: center; }
+.tool.is-scanning:disabled { opacity: 1; color: var(--brand); cursor: progress; }
+
+/* 分集标题操作与现有选集工具保持一致。 */
+#ppEpSection .pp-sec-head { flex-wrap: wrap; }
+.pp-ep-fetch { margin-left: auto; }
+.pp-ep-fetch + .pp-ep-view { margin-left: 0; }
+.pp-ep-fetch:disabled { opacity: .6; cursor: wait; }
+.pp-ep-fetch:focus-visible { outline: 2px solid var(--yk-brand); outline-offset: 2px; }

@@ -104,3 +104,106 @@ test('电影自动回退 1905，无 Key 可完成匹配', async () => {
     assert.equal(d.overview, '简介');
   } finally { global.fetch = previousFetch; }
 });
+
+test('手动搜索按来源独立返回，合并重复请求并缓存结果', async () => {
+  let calls = 0;
+  remote = async url => {
+    assert.match(url, /tvmaze/);
+    calls++;
+    await new Promise(resolve => setTimeout(resolve, 20));
+    return [{ show: { id: 9876, name: '独立搜索测试', premiered: '2024-01-01', rating: { average: 8 } } }];
+  };
+  const [first, second] = await Promise.all([
+    metadata.searchCandidates('独立搜索测试', 'tv', 'tvmaze'),
+    metadata.searchCandidates('独立搜索测试', 'tv', 'tvmaze')
+  ]);
+  assert.equal(calls, 1);
+  assert.equal(first[0].provider, 'tvmaze');
+  assert.deepEqual(first, second);
+  await metadata.searchCandidates('独立搜索测试', 'tv', 'tvmaze');
+  assert.equal(calls, 1);
+  await assert.rejects(metadata.searchCandidates('示例', 'tv', 'unknown'), /不支持/);
+});
+
+test('百度百科候选可手动应用，图片经过允许的图床代理，失败保留旧资料', async () => {
+  const previousFetch = global.fetch;
+  const source = 'https://baike.baidu.com/item/%E7%99%BE%E7%A7%91%E6%B5%8B%E8%AF%95/543211';
+  let imageHeaders;
+  global.fetch = async (url, options) => {
+    if (String(url).startsWith('https://bkimg.cdn.bcebos.com/')) {
+      imageHeaders = options.headers;
+      return { ok: true, arrayBuffer: async () => Buffer.alloc(3000, 1) };
+    }
+    return { ok: true, text: async () => `<link rel="canonical" href="${source}"><h1>百科测试</h1><h2>2024年电视剧</h2><meta name="description" content="百科剧情简介"><meta property="og:image" content="https://bkimg.cdn.bcebos.com/pic/integration-test.jpg">` };
+  };
+  try {
+    const results = await metadata.searchCandidates(source, 'tv', 'baike');
+    assert.equal(results[0].provider, 'baike');
+    const item = { id: 'baike-integration', title: '百科测试', type: 'tv' };
+    const meta = await metadata.applyCandidate(item, results[0].id, 'tv', 'baike');
+    assert.equal(meta.overview, '百科剧情简介');
+    assert.equal(meta.sourceUrl, source);
+    assert.ok(await metadata.cacheImage(meta.poster));
+    assert.equal(imageHeaders.Referer, 'https://baike.baidu.com/');
+    await assert.rejects(metadata.applyCandidate(item, '../bad', 'tv', 'baike'), /ID 无效/);
+    assert.equal(metadata.getCached(item.id).provider, 'baike');
+  } finally { global.fetch = previousFetch; }
+});
+
+test('分集标题按季集映射，合并请求并缓存，不混淆同集号', async () => {
+  const store = require('../lib/store');
+  const config = store.config();
+  const previousKey = config.tmdbKey;
+  store.saveConfig({ tmdbKey: 'test-key' });
+  const item = { id: 'episode-title-test', type: 'tv', episodes: [
+    { index: 0, season: 1, episode: 1 }, { index: 1, season: 2, episode: 1 }, { index: 2, season: 2, episode: 99 }
+  ] };
+  metadata.metaCache[item.id] = { data: { provider: 'tmdb', sourceId: '12345' } };
+  let calls = 0;
+  remote = async url => {
+    calls++;
+    return { episodes: [{ episode_number: 1, name: url.includes('/season/1?') ? '第一季开篇' : '第二季开篇' }] };
+  };
+  try {
+    const results = await Promise.all([metadata.getEpisodeTitles(item), metadata.getEpisodeTitles(item)]);
+    assert.deepEqual(results[0], { 0: '第一季开篇', 1: '第二季开篇' });
+    assert.deepEqual(results[1], results[0]);
+    assert.equal(calls, 2);
+    await metadata.getEpisodeTitles(item);
+    assert.equal(calls, 2);
+    remote = async () => { calls++; return { episodes: [{ episode_number: 1, name: '刷新后的标题' }] }; };
+    assert.deepEqual(await metadata.getEpisodeTitles(item, { force: true }), { 0: '刷新后的标题', 1: '刷新后的标题' });
+    assert.equal(calls, 4);
+    store.saveConfig({ tmdbKey: '' });
+    await assert.rejects(metadata.getEpisodeTitles(item, { force: true }), /配置 TMDB/);
+    store.saveConfig({ tmdbKey: 'test-key' });
+    assert.deepEqual(await metadata.getEpisodeTitles({ ...item, type: 'movie' }), {});
+    metadata.metaCache[item.id] = { data: { provider: 'douban', sourceId: '12345' } };
+    assert.deepEqual(await metadata.getEpisodeTitles(item), {});
+  } finally { store.saveConfig({ tmdbKey: previousKey }); }
+});
+
+
+test('其他来源剧集获取分集后可复用缓存，保留原影片匹配', async () => {
+  const store = require('../lib/store');
+  const previousKey = store.config().tmdbKey;
+  store.saveConfig({ tmdbKey: 'test-key' });
+  const item = { id: 'linked-episodes', title: '示例剧', type: 'tv', year: 2024,
+    episodes: [{ index: 0, season: 1, episode: 1 }] };
+  metadata.metaCache[item.id] = { data: { provider: 'douban', sourceId: 'douban-example' } };
+  let calls = 0;
+  remote = async url => {
+    calls++;
+    if (url.includes('/search/tv?')) return { results: [{ id: 99881, name: '示例剧', first_air_date: '2024-01-01' }] };
+    if (url.includes('/season/1?')) return { episodes: [{ episode_number: 1, name: '初见' }] };
+    return { id: 99881, name: '示例剧', first_air_date: '2024-01-01' };
+  };
+  try {
+    assert.deepEqual(await metadata.getEpisodeTitles(item, { force: true }), { 0: '初见' });
+    const fetched = calls;
+    assert.deepEqual(await metadata.getEpisodeTitles(item), { 0: '初见' });
+    assert.equal(calls, fetched);
+    assert.equal(metadata.getCached(item.id).provider, 'douban');
+    assert.deepEqual(await metadata.getEpisodeTitles({ ...item, title: '另一个剧名' }), {});
+  } finally { store.saveConfig({ tmdbKey: previousKey }); }
+});

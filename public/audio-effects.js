@@ -17,7 +17,7 @@
   const surfaces = ['mbSpectrum', 'apSpectrum'].map(id => {
     const canvas = document.querySelector(`#${id}`);
     const drawing = canvas && typeof canvas.getContext === 'function' ? canvas.getContext('2d') : null;
-    return drawing ? { canvas, drawing, levels: new Float32Array(96) } : null;
+    return drawing ? { canvas, drawing, levels: new Float32Array(768) } : null;
   }).filter(Boolean);
   const miniBar = document.querySelector('#miniBar');
   const audioPage = document.querySelector('#audioPage');
@@ -135,7 +135,8 @@
     gradient.addColorStop(0.82, '#9950ba');
     gradient.addColorStop(1, '#e400a8');
     drawing.fillStyle = gradient;
-    const count = Math.min(96, Math.max(12, Math.floor(width / 5)));
+    // 按可见宽度保持约 5px 的柱间距，关闭歌词后的宽幅视图也保持密度。
+    const count = Math.min(levels.length, Math.max(12, Math.floor(width / 5)));
     const step = width / count;
     for (let i = 0; i < count; i++) {
       let value = 0;

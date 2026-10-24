@@ -32,7 +32,7 @@ function setup(saved = 'off', supported = true, spectrum = false) {
   const miniBar = { hidden: false };
   const dummy = { addEventListener() {}, dataset: {} };
   vm.runInNewContext(script, { window: { AudioContext: supported ? Context : null, addEventListener() {} }, document: { querySelector: selector => selector === '#audioEl' ? audio : selector === '#mbSpectrum' ? (spectrum === true ? canvas : null) : selector === '#apSpectrum' ? (spectrum === 'large' ? canvas : null) : selector === '#miniBar' ? miniBar : dummy, querySelectorAll: selector => selector === '[data-audio-effect]' ? controls : [], addEventListener: (name, fn) => { events[name] = fn; } }, localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) }, console: { warn() {} }, Float32Array, Uint8Array, getComputedStyle: () => ({ color: '#1685ae' }), requestAnimationFrame: fn => { frames.set(++frameId, fn); return frameId; }, cancelAnimationFrame: id => frames.delete(id), MutationObserver: class { observe() {} }, ResizeObserver: class { observe() {} } });
-  return { controls, nodes, contexts, storage, events, audio, audioEvents, frames, bars };
+  return { controls, nodes, contexts, storage, events, audio, audioEvents, frames, bars, canvas };
 }
 test('所有音效切换复用同一音源，两处入口同步，原声旁路', async () => {
   const s = setup();
@@ -95,4 +95,26 @@ test('大播放页独立显示频谱，复用唯一音源与分析器', async ()
   assert.equal(s.nodes.filter(n => n.type === 'source').length, 1);
   assert.equal(s.nodes.filter(n => n.type === 'analyser').length, 1);
   assert.equal(s.frames.size, 1);
+});
+
+test('关闭歌词后频谱随宽度增加密度，窗口缩小时仍完整绘制', async () => {
+  const s = setup('off', true, 'large');
+  await s.audioEvents.play();
+  const draw = time => {
+    const [id, tick] = s.frames.entries().next().value;
+    s.frames.delete(id);
+    tick(time);
+  };
+  draw(100);
+  const narrowCount = s.bars.length;
+  s.canvas.clientWidth = 1800;
+  draw(200);
+  assert.ok(s.bars.length > narrowCount * 4);
+  const spacing = s.bars[1][0] - s.bars[0][0];
+  assert.ok(spacing <= 6, '宽幅频谱不能出现大段空隙');
+  assert.ok(s.bars.every(bar => bar[0] >= 0 && bar[0] + bar[2] <= 1800 && Number.isFinite(bar[3])));
+  s.canvas.clientWidth = 320;
+  draw(300);
+  assert.ok(s.bars.length < narrowCount);
+  assert.ok(s.bars.every(bar => bar[0] + bar[2] <= 320));
 });
