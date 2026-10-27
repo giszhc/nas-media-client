@@ -190,6 +190,7 @@
   window.addEventListener('pagehide', stopSpectrum);
   if (surfaces.length) {
     const visibilityObserver = new MutationObserver(startSpectrum);
+    visibilityObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-accent'] });
     for (const element of [miniBar, audioPage]) {
       if (element) visibilityObserver.observe(element, { attributes: true, attributeFilter: ['hidden'] });
     }

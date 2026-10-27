@@ -2746,7 +2746,11 @@ function hideAudioPage() {
   const wasOpen = AU.open;
   AU.open = false;
   const current = auIndexInfo();
-  if (current && location.hash === `#/play/${current.id}/${current.ep || 0}` && $('#player').hidden) history.replaceState(null, '', '#/list/music');
+  if (current && location.hash === `#/play/${current.id}/${current.ep || 0}` && $('#player').hidden) {
+    history.replaceState(null, '', '#/list/music');
+    // replaceState 不触发 hashchange；直接进入播放页后折叠也要补齐音乐馆。
+    if (state.route.name !== 'list' || state.route.type !== 'music') route();
+  }
   persistAudioSession(true);
   $('#view').hidden = false;
   syncMiniBar();
@@ -4723,7 +4727,9 @@ async function boot() {
     const saved = JSON.parse(localStorage.getItem(AUDIO_SESSION_KEY) || 'null');
     const track = saved && saved.queue && saved.queue[saved.index];
     if (track && location.hash === `#/play/${track.id}/${track.ep || 0}` && allItems().some(item => item.id === track.id && item.type === 'music')) {
-      state.route = { name: 'item', id: track.id };
+      // 先渲染底层音乐馆和导航，再恢复覆盖其上的大播放页。
+      history.replaceState(null, '', '#/list/music');
+      route();
       await restoreAudioSession({ playPage: true });
       restoredPlayPage = !!AU.data;
     }

@@ -172,18 +172,7 @@ body { background: var(--bg); }
   background: linear-gradient(135deg,rgba(255,255,255,.69),rgba(255,255,255,.36) 50%,rgba(255,255,255,.78));
 }
 :root[data-theme] .page-audio .ap-play { box-shadow: inset 0 1px 0 #fff, 0 5px 18px rgba(30,50,70,.1); }
-/* 音效弹窗跟随系统主题。 */
-:root[data-theme] .effects-panel {
-  --effect-gold: var(--brand); color: var(--ink); background: var(--glass-dense);
-  border-color: var(--line); box-shadow: var(--glass-rim), var(--glass-shadow);
-  backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); color-scheme: inherit;
-}
-:root[data-theme] .effects-close, :root[data-theme] .effect-card, :root[data-theme] .effect-card button { background: var(--glass-control); color: var(--ink); }
-:root[data-theme] .effects-section > span, :root[data-theme] .effect-card p, :root[data-theme] .effects-note, :root[data-theme] .effects-current > span:first-child { color: var(--ink-2); }
-:root[data-theme] .effects-current { background: transparent; }
-:root[data-theme] .effect-card[data-active="true"] { background: var(--soft-2); border-color: var(--brand); }
-:root[data-theme] .effect-card button[aria-pressed="true"] { background: #007fb8; color: #fff; }
-:root[data-theme] .effect-current-state { border-color: var(--line-2); }
+/* 音效弹窗沿用 style.css 的独立黑金 / 浅色暖金样式，避免玻璃材质覆盖。 */
 .page-player { background: transparent; }
 .pp-side { background: var(--surface); border-radius: 16px; box-shadow: var(--glass-rim); }
 .pp-stage { border-radius: 14px; }
@@ -196,7 +185,7 @@ body { background: var(--bg); }
   :root[data-theme] .mini-bar, :root[data-theme] .mb-queue, :root[data-theme] .mb-volume-pop, :root[data-theme] .page-audio .ap-queue { background: #f8fbff; backdrop-filter: none; -webkit-backdrop-filter: none; }
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .sidebar, .topbar, .main:has(.channel-showcase) .topbar, .modal, .login-card, .effects-panel { background: var(--glass-dense); }
+  .sidebar, .topbar, .main:has(.channel-showcase) .topbar, .modal, .login-card { background: var(--glass-dense); }
   :root[data-theme] .mini-bar, :root[data-theme] .mb-queue, :root[data-theme] .mb-volume-pop, :root[data-theme] .page-audio .ap-queue { background: #f8fbff; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -587,8 +576,51 @@ body:has(#audioPage:not([hidden])) .main > .topbar { visibility: hidden; }
 :root[data-theme="light"][data-accent] { --brand: var(--accent-light); }
 :root[data-accent] :is(.page-audio, .mini-bar, .mb-queue) { --brand: var(--accent-dark); --brand-deep: var(--accent-solid); }
 :root[data-theme="light"][data-accent] :is(.page-audio, .mini-bar, .mb-queue) { --brand: var(--accent-light); }
+/* 音乐播放控件共用强调色；中性文字和未播放轨道保持主题对比。 */
+:root[data-theme][data-accent] .page-audio { --ap-accent: var(--brand); }
+:root[data-accent] .mp-playall { background: var(--accent-solid); }
+:root[data-accent] .mini-bar .mb-seek {
+  background: linear-gradient(to right, var(--brand) var(--progress), color-mix(in srgb, var(--ink) 24%, transparent) var(--progress));
+}
+:root[data-accent] .mini-bar .mb-seek::-webkit-slider-thumb { background: var(--brand); border-color: var(--brand); }
+:root[data-accent] .mini-bar .mb-seek::-moz-range-thumb { background: var(--brand); border-color: var(--brand); }
+:root[data-accent] .mini-bar .mb-btn.play { color: var(--ink); border: 0; }
+:root[data-accent] .mini-bar .mb-btn.play:is(:hover, :focus-visible) { color: var(--brand); }
+:root[data-accent] .mini-bar .mb-btn:hover { color: var(--brand); }
+/* 右侧工具默认统一为正文色，启用状态不单独着色。 */
+:root[data-theme][data-accent] .mini-bar .mb-actions :is(.mb-btn, .audio-effect-trigger) { color: var(--ink); }
+:root[data-theme][data-accent] .mini-bar .mb-actions :is(.mb-btn, .audio-effect-trigger):is(:hover, :focus-visible) { color: var(--brand); }
+:root[data-accent] .mini-bar > .mb-spectrum,
+:root[data-accent] .page-audio .ap-spectrum { color: var(--brand); }
+:root[data-accent] .page-audio :is(.ap-fill, .ap-dot) { background: var(--ap-accent); }
+:root[data-accent] .page-audio .ap-play { color: var(--ap-ink); border: 0; }
+:root[data-accent] .page-audio .ap-play:is(:hover, :focus-visible) { color: var(--ap-accent); }
+:root[data-accent] .page-audio .ap-btn:hover { color: var(--ap-accent); }
+:root[data-accent] :is(.mini-bar, .page-audio) .mb-volume-pop input {
+  background: linear-gradient(to top, var(--brand) var(--volume), color-mix(in srgb, var(--ink) 20%, transparent) var(--volume));
+}
+:root[data-accent] :is(.mini-bar, .page-audio) .mb-volume-pop input::-webkit-slider-thumb { background: var(--brand); }
+:root[data-accent] :is(.mini-bar, .page-audio) .mb-volume-pop input::-moz-range-thumb { background: var(--brand); }
+:root[data-accent] :is(.mini-bar, .page-audio) .mb-volume-pop input:is(:hover, :active)::-webkit-slider-thumb { box-shadow: 0 0 0 5px var(--ring); }
+:root[data-accent] :is(.mini-bar, .page-audio) .mb-volume-pop input:is(:hover, :active)::-moz-range-thumb { box-shadow: 0 0 0 5px var(--ring); }
+/* 大播放页队列采用浅色玻璃，强调色按面板底色保证可读性。 */
+:root[data-theme][data-accent] .page-audio .ap-queue {
+  --brand: var(--accent-light); --brand-deep: var(--brand); --ap-accent: var(--brand);
+}
+:root[data-accent] :is(.mb-queue, .ap-queue) {
+  --soft: color-mix(in srgb, var(--brand) 10%, transparent);
+  --soft-2: color-mix(in srgb, var(--brand) 15%, transparent);
+}
+:root[data-accent] :is(.mb-queue-item, .apq-item).on { color: var(--brand); background: var(--soft); }
+:root[data-accent] .ap-queue .apq-item.on :is(.apq-name, .apq-no) { color: var(--brand); }
+:root[data-theme][data-accent] :is(.mb-queue, .ap-queue) .queue-search { caret-color: var(--brand); }
+:root[data-theme][data-accent] :is(.mb-queue, .ap-queue) .queue-search:is(:focus, :focus-visible) {
+  border-color: var(--brand); outline: none;
+}
+:root[data-accent] :is(.mb-queue, .ap-queue) .queue-search::selection { background: var(--soft-2); color: inherit; }
+:root[data-accent] :is(.mb-queue-item, .apq-item):focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
 :root[data-accent] .page-player { --yk-brand: var(--brand); }
-:root[data-accent] :is(.pep.on, .fb-chip.on, .effect-card button[aria-pressed="true"]) { background: var(--accent-solid); color: #fff; }
+:root[data-accent] :is(.pep.on, .fb-chip.on) { background: var(--accent-solid); color: #fff; }
 :root[data-accent] ::selection { background: color-mix(in srgb, var(--brand) 25%, transparent); }
 .accent-heading { display: flex; align-items: center; gap: 12px; margin: 4px 0 14px; font-size: 14px; font-weight: 600; }
 #accentName { color: var(--ink-3); font-size: 12px; font-weight: 400; }
